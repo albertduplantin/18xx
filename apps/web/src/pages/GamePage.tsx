@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback } from "react";
-import type { HexCoord, AuctionContext, StockContext, OperatingContext } from "@18xx/shared";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import type { HexCoord, OperatingContext, Route } from "@18xx/shared";
 import { GAME_1830 } from "@18xx/games";
+import { calculateOptimalRoutes, hexKey, hexNeighbor } from "@18xx/engine";
 import { HexMap } from "../components/HexMap.js";
 import { StockMarket } from "../components/StockMarket.js";
 import { CompanyPanel } from "../components/CompanyPanel.js";
@@ -34,6 +35,40 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
     );
     setActiveTab("map");
   }, []);
+
+  // Compute optimal routes for the current operating company (shown on the map)
+  const activeRoutes = useMemo((): readonly Route[] => {
+    if (!state || !def) return [];
+    const ctx = state.turnContext;
+    if (ctx.type !== "operating") return [];
+    const companyId = ctx.companyOrder[ctx.companyIdx] ?? "";
+    const company = state.companies[companyId];
+    if (!company || company.trains.length === 0) return [];
+    return calculateOptimalRoutes(state, def, companyId);
+  }, [state, def]);
+
+  // Hexes where tile placement is currently valid (adjacent to placed tiles, empty, on-board)
+  const validTileHexes = useMemo((): ReadonlySet<string> => {
+    if (!state || !def) return new Set();
+    const ctx = state.turnContext;
+    if (ctx.type !== "operating") return new Set();
+    if (ctx.companyActions.includes("tile")) return new Set();
+
+    const placed = new Set(Object.keys(state.map));
+    const result = new Set<string>();
+    for (const key of placed) {
+      const parts = key.split(",");
+      const q = Number(parts[0]), r = Number(parts[1]);
+      for (let dir = 0; dir < 6; dir++) {
+        const n = hexNeighbor({ q, r }, dir as 0);
+        const nk = hexKey(n);
+        if (placed.has(nk)) continue;
+        const hexDef = def.map.find((h) => h.coord.q === n.q && h.coord.r === n.r);
+        if (hexDef && !hexDef.offboard) result.add(nk);
+      }
+    }
+    return result;
+  }, [state, def]);
 
   if (!state || !def) {
     return (
@@ -109,8 +144,6 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
 
       {/* ── Main area ── */}
       <div style={{ overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
-
-        {/* Tabs */}
         <div style={{ display: "flex", background: "#0d0d20", borderBottom: "1px solid #2a2a50", flexShrink: 0 }}>
           {(["map", "market", "log"] as Tab[]).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
@@ -129,10 +162,18 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
           )}
         </div>
 
-        {/* Tab content */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
           <div style={{ display: activeTab === "map" ? "block" : "none", height: "100%" }}>
-            <HexMap mapDef={def.map} state={state} tiles={def.tiles} selectedHex={selectedHex} onHexClick={onHexClick} />
+            <HexMap
+              mapDef={def.map}
+              state={state}
+              def={def}
+              tiles={def.tiles}
+              selectedHex={selectedHex}
+              onHexClick={onHexClick}
+              validTileHexes={validTileHexes}
+              activeRoutes={activeRoutes}
+            />
           </div>
           {activeTab === "market" && (
             <div style={{ padding: 16, overflowY: "auto", height: "100%" }}>
@@ -150,8 +191,6 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
 
       {/* ── Right sidebar ── */}
       <div style={{ borderLeft: "1px solid #2a2a50", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
-        {/* Action panel (top, scrollable) */}
         <div style={{ flex: 1, overflowY: "auto", padding: 12, borderBottom: "1px solid #2a2a50" }}>
           {ctx.type === "auction" && (
             <AuctionPanel state={state} def={def} myPlayerId={playerId} onAction={onAction} />
@@ -165,6 +204,7 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
               def={def}
               myPlayerId={playerId}
               selectedHex={selectedHex}
+              calculatedRoutes={activeRoutes}
               onAction={onAction}
               onRequestTilePicker={() => {
                 if (selectedHex) setShowTilePicker(true);
@@ -174,13 +214,11 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
           )}
         </div>
 
-        {/* Players (always visible, compact) */}
         <div style={{ padding: 10, borderBottom: "1px solid #2a2a50", flexShrink: 0 }}>
           <div style={{ fontSize: 10, color: "#555", fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>PLAYERS</div>
           <PlayerPanel state={state} def={def} myPlayerId={playerId} />
         </div>
 
-        {/* Companies (always visible, compact) */}
         <div style={{ padding: 10, overflowY: "auto", maxHeight: 220 }}>
           <div style={{ fontSize: 10, color: "#555", fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>COMPANIES</div>
           <CompanyPanel state={state} def={def} />
