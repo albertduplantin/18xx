@@ -4,6 +4,21 @@ import { hexToPixel, hexCorners, hexKey, rotatePaths } from "@18xx/engine";
 
 const HEX_SIZE = 52;
 
+// Physical 18xx board background — warm parchment/tan, not green felt
+const BOARD_BG = "#b8a87a";
+
+// Tile fill colors matching physical 18xx tile set
+const TILE_COLORS: Record<string, string> = {
+  white:  "#e8e0ca",
+  yellow: "#e8c832",
+  green:  "#3a9e4e",
+  brown:  "#8b5e3c",
+  gray:   "#909090",
+  red:    "#a02020",
+};
+
+const ROUTE_COLORS = ["#e63030", "#2060e0", "#20a850", "#e08000", "#8020c0", "#00a0b0"];
+
 type Props = {
   mapDef: readonly HexDef[];
   state: GameState;
@@ -11,87 +26,115 @@ type Props = {
   tiles: readonly TileDef[];
   selectedHex: HexCoord | null;
   onHexClick: (coord: HexCoord) => void;
-  /** Hex keys (q,r) that should show a green "valid placement" highlight */
   validTileHexes?: ReadonlySet<string>;
-  /** Routes to draw on the map — e.g. the most recently run routes */
   activeRoutes?: readonly Route[];
 };
 
-// ─── Route colors ────────────────────────────────────────────────────────────
-const ROUTE_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c"];
+// ─── Revenue helper ───────────────────────────────────────────────────────────
 
-// ─── Track path ──────────────────────────────────────────────────────────────
+function phaseRevenue(revenue: number | Record<string, number>, phaseId: string): number {
+  if (typeof revenue === "number") return revenue;
+  return revenue[phaseId] ?? Object.values(revenue)[0] ?? 0;
+}
+
+// ─── Track rendering ──────────────────────────────────────────────────────────
 
 function trackEndpoint(dir: number, size: number) {
   const angle = (dir * Math.PI) / 3;
   return { x: Math.cos(angle) * size, y: Math.sin(angle) * size };
 }
 
-function TrackPath({ from, to, size }: { from: number; to: number; size: number }) {
+function TrackPath({ from, to, size, color }: { from: number; to: number; size: number; color: string }) {
   const f = trackEndpoint(from, size * 0.97);
   const t = trackEndpoint(to, size * 0.97);
   const cx = (f.x + t.x) / 2 * 0.4;
   const cy = (f.y + t.y) / 2 * 0.4;
   return (
-    <path
-      d={`M ${f.x} ${f.y} Q ${cx} ${cy} ${t.x} ${t.y}`}
-      stroke="#c8a96e"
-      strokeWidth={size * 0.14}
-      fill="none"
-      strokeLinecap="round"
-    />
+    <>
+      {/* Shadow/outline for contrast */}
+      <path d={`M ${f.x} ${f.y} Q ${cx} ${cy} ${t.x} ${t.y}`}
+        stroke="rgba(0,0,0,0.3)" strokeWidth={size * 0.20} fill="none" strokeLinecap="round" />
+      {/* Main track line — white on physical tiles */}
+      <path d={`M ${f.x} ${f.y} Q ${cx} ${cy} ${t.x} ${t.y}`}
+        stroke={color} strokeWidth={size * 0.14} fill="none" strokeLinecap="round" />
+    </>
   );
 }
 
-// ─── City / Town ─────────────────────────────────────────────────────────────
+// ─── City circle ──────────────────────────────────────────────────────────────
 
-function CityCircle({ slots, size, tokens, companyColors }: {
+function CityCircle({ slots, size, tokens, companyColors, revenue }: {
   slots: number;
   size: number;
   tokens: readonly (string | null)[];
   companyColors: Record<string, string>;
+  revenue: number;
 }) {
   const r = size * 0.22;
-  if (slots === 1) {
-    const token = tokens[0] ?? null;
-    return (
-      <g>
-        <circle r={r} fill={token ? (companyColors[token] ?? "#888") : "#fff"} stroke="#333" strokeWidth={2} />
-        {token && <text textAnchor="middle" dominantBaseline="middle" fontSize={r * 0.9} fill="#fff" fontWeight="bold">{token}</text>}
-      </g>
-    );
-  }
+  const tokenR = slots === 1 ? r : r * 0.8;
+
   return (
     <g>
       {Array.from({ length: slots }, (_, i) => {
-        const angle = (i * Math.PI * 2) / slots - Math.PI / 2;
-        const dx = Math.cos(angle) * r * 1.2;
-        const dy = Math.sin(angle) * r * 1.2;
+        const angle = slots > 1 ? (i * Math.PI * 2) / slots - Math.PI / 2 : 0;
+        const dx = slots > 1 ? Math.cos(angle) * r * 1.2 : 0;
+        const dy = slots > 1 ? Math.sin(angle) * r * 1.2 : 0;
         const token = tokens[i] ?? null;
+        const tokenColor = token ? (companyColors[token] ?? "#888") : "#f0ece0";
+        const textColor = token ? "#ffffff" : "#000";
         return (
           <g key={i} transform={`translate(${dx},${dy})`}>
-            <circle r={r * 0.8} fill={token ? (companyColors[token] ?? "#888") : "#fff"} stroke="#333" strokeWidth={1.5} />
-            {token && <text textAnchor="middle" dominantBaseline="middle" fontSize={r * 0.7} fill="#fff" fontWeight="bold">{token}</text>}
+            <circle r={tokenR} fill={tokenColor} stroke="#2a1a00" strokeWidth={1.5} />
+            {token && (
+              <text textAnchor="middle" dominantBaseline="middle" fontSize={tokenR * 0.85}
+                fill={textColor} fontWeight="bold"
+                fontFamily="'Copperplate Gothic', Copperplate, serif">
+                {token}
+              </text>
+            )}
           </g>
         );
       })}
+      {/* Revenue bubble — white oval with revenue value, top-right of city */}
+      {revenue > 0 && (
+        <g transform={`translate(${size * 0.38}, ${-size * 0.42})`}>
+          <rect x={-14} y={-8} width={28} height={16} rx={8}
+            fill="#f5f0e0" stroke="#5a4020" strokeWidth={1.2} />
+          <text textAnchor="middle" dominantBaseline="middle" fontSize={9.5} fill="#1a0a00"
+            fontWeight="bold" fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
+            {revenue}
+          </text>
+        </g>
+      )}
     </g>
   );
 }
 
-function TownDot({ size }: { size: number }) {
-  return <rect x={-size * 0.1} y={-size * 0.1} width={size * 0.2} height={size * 0.2} fill="#c8a96e" stroke="#333" strokeWidth={1} rx={2} />;
+// ─── Town dot ─────────────────────────────────────────────────────────────────
+
+function TownDot({ size, revenue }: { size: number; revenue: number }) {
+  const s = size * 0.18;
+  return (
+    <g>
+      <rect x={-s} y={-s} width={s * 2} height={s * 2} fill="#1a1000" stroke="#0a0800" strokeWidth={1} rx={2} />
+      {revenue > 0 && (
+        <g transform={`translate(${size * 0.32}, ${-size * 0.32})`}>
+          <rect x={-12} y={-7} width={24} height={14} rx={7}
+            fill="#f5f0e0" stroke="#5a4020" strokeWidth={1.2} />
+          <text textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="#1a0a00"
+            fontWeight="bold" fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
+            {revenue}
+          </text>
+        </g>
+      )}
+    </g>
+  );
 }
 
-// ─── Hex cell ─────────────────────────────────────────────────────────────────
-
-const TILE_COLORS: Record<string, string> = {
-  white: "#f5f0e8", yellow: "#f5d442", green: "#3a9e4e",
-  brown: "#8b5e3c", gray: "#9a9a9a", red: "#c0392b",
-};
+// ─── Single hex cell ──────────────────────────────────────────────────────────
 
 function HexCell({
-  hexDef, placed, tileDef, selected, highlighted, size, companyColors, onClick,
+  hexDef, placed, tileDef, selected, highlighted, size, companyColors, phaseId, onClick,
 }: {
   hexDef: HexDef;
   placed: PlacedTile | undefined;
@@ -100,15 +143,21 @@ function HexCell({
   highlighted: boolean;
   size: number;
   companyColors: Record<string, string>;
+  phaseId: string;
   onClick: () => void;
 }) {
   const { x, y } = hexToPixel(hexDef.coord, size);
+  const isOffboard = !!hexDef.offboard;
   const effectiveTile = placed ? tileDef : hexDef.tile;
-  const bgColor = hexDef.offboard
-    ? "#c0392b"
+
+  const bgColor = isOffboard
+    ? "#a02020"
     : effectiveTile
-    ? (TILE_COLORS[effectiveTile.color] ?? "#f5f0e8")
-    : "#f5f0e8";
+    ? (TILE_COLORS[effectiveTile.color] ?? TILE_COLORS.white!)
+    : TILE_COLORS.white!;
+
+  // Physical 18xx: tracks are white lines on colored tiles, tan on white/undeveloped
+  const trackColor = (effectiveTile && effectiveTile.color !== "white") ? "#f8f4e8" : "#d0c8a8";
 
   const rotation = placed?.rotation ?? 0;
   const paths = effectiveTile ? rotatePaths(effectiveTile.paths, rotation) : [];
@@ -119,35 +168,53 @@ function HexCell({
       <polygon
         points={hexCorners(0, 0, size)}
         fill={bgColor}
-        stroke={selected ? "#f0e020" : highlighted ? "#4caf50" : "#555"}
-        strokeWidth={selected ? 3 : highlighted ? 2.5 : 1.5}
+        stroke={selected ? "#e8d020" : highlighted ? "#50c840" : "#6b5a3a"}
+        strokeWidth={selected ? 3 : highlighted ? 2.5 : 1}
       />
-      {/* Valid placement green glow */}
       {highlighted && (
-        <polygon points={hexCorners(0, 0, size)} fill="rgba(76,175,80,0.18)" />
+        <polygon points={hexCorners(0, 0, size)} fill="rgba(80,200,64,0.15)" style={{ pointerEvents: "none" }} />
       )}
 
-      {paths.map((p, i) => <TrackPath key={i} from={p.from} to={p.to} size={size} />)}
+      {paths.map((p, i) => (
+        <TrackPath key={i} from={p.from} to={p.to} size={size} color={trackColor} />
+      ))}
 
       {effectiveTile?.cities.map((city, i) => (
         <CityCircle key={i} slots={city.slots} size={size}
           tokens={tokenSlots.slice(i * city.slots, (i + 1) * city.slots)}
-          companyColors={companyColors} />
+          companyColors={companyColors}
+          revenue={phaseRevenue(city.revenue, phaseId)} />
       ))}
-      {effectiveTile?.towns.map((_t, i) => <TownDot key={i} size={size} />)}
 
+      {effectiveTile?.towns.map((town, i) => (
+        <TownDot key={i} size={size} revenue={phaseRevenue(town.revenue, phaseId)} />
+      ))}
+
+      {/* Hex label (city name) */}
       {hexDef.label && (
-        <text y={size * 0.55} textAnchor="middle" fontSize={size * 0.16}
-          fill={hexDef.offboard ? "#fff" : "#333"} fontWeight="600"
-          style={{ pointerEvents: "none" }}>
+        <text
+          y={size * 0.6}
+          textAnchor="middle"
+          fontSize={isOffboard ? size * 0.15 : size * 0.16}
+          fill={isOffboard ? "#f5e8d0" : "#2a1a00"}
+          fontWeight="700"
+          fontFamily="'Copperplate Gothic', Copperplate, 'Palatino Linotype', serif"
+          style={{ pointerEvents: "none" }}
+        >
           {hexDef.label}
         </text>
       )}
-      {hexDef.offboard && (
-        <text y={-size * 0.3} textAnchor="middle" fontSize={size * 0.18}
-          fill="#fff" fontWeight="bold" style={{ pointerEvents: "none" }}>
-          {typeof hexDef.offboard.revenue === "number" ? `$${hexDef.offboard.revenue}` : "OB"}
-        </text>
+
+      {/* Off-board revenue badge */}
+      {isOffboard && hexDef.offboard && (
+        <g transform={`translate(0, ${-size * 0.25})`} style={{ pointerEvents: "none" }}>
+          <rect x={-22} y={-11} width={44} height={22} rx={11}
+            fill="#f5ece0" stroke="#7a1a1a" strokeWidth={1.5} />
+          <text textAnchor="middle" dominantBaseline="middle" fontSize={11} fill="#7a1a1a"
+            fontWeight="bold" fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
+            ${phaseRevenue(hexDef.offboard.revenue, phaseId)}
+          </text>
+        </g>
       )}
     </g>
   );
@@ -168,26 +235,21 @@ function RouteOverlay({ routes, size }: { routes: readonly Route[]; size: number
               const { x: x1, y: y1 } = hexToPixel(hex, size);
               const { x: x2, y: y2 } = hexToPixel(next, size);
               return (
-                <line
-                  key={i}
-                  x1={x1} y1={y1} x2={x2} y2={y2}
-                  stroke={color}
-                  strokeWidth={size * 0.12}
-                  strokeLinecap="round"
-                  opacity={0.75}
-                  style={{ pointerEvents: "none" }}
-                />
+                <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke={color} strokeWidth={size * 0.12} strokeLinecap="round"
+                  opacity={0.72} style={{ pointerEvents: "none" }} />
               );
             })}
-            {/* Revenue label on last hex */}
             {route.hexes.length > 0 && (() => {
               const last = route.hexes[route.hexes.length - 1]!;
               const { x, y } = hexToPixel(last, size);
               return (
-                <g key="label" style={{ pointerEvents: "none" }}>
-                  <circle cx={x} cy={y - size * 0.55} r={size * 0.22} fill={color} opacity={0.9} />
-                  <text x={x} y={y - size * 0.55} textAnchor="middle" dominantBaseline="middle"
-                    fontSize={size * 0.18} fill="#fff" fontWeight="bold">
+                <g key="rev" style={{ pointerEvents: "none" }}>
+                  <rect x={x - 20} y={y - size * 0.62} width={40} height={18} rx={9}
+                    fill={color} stroke="#1a1a1a" strokeWidth={1} opacity={0.92} />
+                  <text x={x} y={y - size * 0.53} textAnchor="middle" dominantBaseline="middle"
+                    fontSize={11} fill="#fff" fontWeight="bold"
+                    fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
                     ${route.revenue}
                   </text>
                 </g>
@@ -255,7 +317,8 @@ export function HexMap({ mapDef, state, def, tiles, selectedHex, onHexClick, val
       onMouseLeave={onMouseUp}
       onWheel={onWheel}
     >
-      <rect x={viewBox.x - 100} y={viewBox.y - 100} width={viewBox.w + 200} height={viewBox.h + 200} fill="#4a7c59" />
+      <rect x={viewBox.x - 100} y={viewBox.y - 100} width={viewBox.w + 200} height={viewBox.h + 200}
+        fill={BOARD_BG} />
 
       {mapDef.map((hex) => {
         const key = hexKey(hex.coord);
@@ -274,12 +337,12 @@ export function HexMap({ mapDef, state, def, tiles, selectedHex, onHexClick, val
             highlighted={isHighlighted}
             size={HEX_SIZE}
             companyColors={companyColors}
+            phaseId={state.phaseId}
             onClick={() => onHexClick(hex.coord)}
           />
         );
       })}
 
-      {/* Route lines rendered on top of tiles */}
       {activeRoutes && activeRoutes.length > 0 && (
         <RouteOverlay routes={activeRoutes} size={HEX_SIZE} />
       )}
