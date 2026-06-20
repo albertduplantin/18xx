@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: 18xx-online
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      # PORT est injecté automatiquement par Render — ne pas le surcharger
+    healthCheckPath: /health
+    plan: free

@@ -4,11 +4,12 @@
  */
 import type { GameState } from "@18xx/shared";
 
-type GameRecord = {
+export type GameRecord = {
   state: GameState;
   defId: string;
   createdAt: number;
   playerIds: string[];
+  botIds: readonly string[];
 };
 
 const games = new Map<string, GameRecord>();

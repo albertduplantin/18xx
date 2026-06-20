@@ -1,182 +1,206 @@
-import React, { useEffect, useState } from "react";
-import type { HexCoord } from "@18xx/shared";
+import React, { useEffect, useState, useCallback } from "react";
+import type { HexCoord, AuctionContext, StockContext, OperatingContext } from "@18xx/shared";
 import { GAME_1830 } from "@18xx/games";
 import { HexMap } from "../components/HexMap.js";
 import { StockMarket } from "../components/StockMarket.js";
 import { CompanyPanel } from "../components/CompanyPanel.js";
 import { PlayerPanel } from "../components/PlayerPanel.js";
 import { GameLog } from "../components/GameLog.js";
+import { AuctionPanel } from "../components/actions/AuctionPanel.js";
+import { StockPanel } from "../components/actions/StockPanel.js";
+import { OperatingPanel } from "../components/actions/OperatingPanel.js";
+import { TilePicker } from "../components/actions/TilePicker.js";
 import { useGameStore } from "../store/game-store.js";
+
+type Tab = "map" | "market" | "log";
 
 export function GamePage({ gameId, playerId }: { gameId: string; playerId: string }) {
   const { state, def, connectWs, sendAction, error, clearError } = useGameStore();
   const [selectedHex, setSelectedHex] = useState<HexCoord | null>(null);
-  const [activeTab, setActiveTab] = useState<"map" | "market" | "log">("map");
+  const [activeTab, setActiveTab] = useState<Tab>("map");
+  const [showTilePicker, setShowTilePicker] = useState(false);
 
   useEffect(() => {
     connectWs(gameId, playerId);
   }, [gameId, playerId, connectWs]);
 
+  const onAction = useCallback((action: object) => {
+    sendAction(action as never);
+  }, [sendAction]);
+
+  const onHexClick = useCallback((coord: HexCoord) => {
+    setSelectedHex((prev) =>
+      prev?.q === coord.q && prev?.r === coord.r ? null : coord,
+    );
+    setActiveTab("map");
+  }, []);
+
   if (!state || !def) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
-        <p style={{ color: "#aaa" }}>Connecting to game…</p>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⚙</div>
+          <p style={{ color: "#aaa" }}>Connecting to game…</p>
+        </div>
       </div>
     );
   }
 
+  const ctx = state.turnContext;
   const isMyTurn = state.currentPlayerId === playerId;
+  const roundLabel = state.round === "auction"
+    ? "Initial Auction"
+    : state.round === "stock"
+    ? `Stock Round ${state.roundNumber}`
+    : `OR ${state.roundNumber}.${(ctx as OperatingContext).orRound}`;
+
+  const currentCompany = ctx.type === "operating"
+    ? (ctx as OperatingContext).companyOrder[(ctx as OperatingContext).companyIdx]
+    : null;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gridTemplateRows: "auto 1fr", height: "100vh", gap: 0 }}>
-      {/* Header */}
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gridTemplateRows: "44px 1fr", height: "100vh", overflow: "hidden" }}>
+
+      {/* ── Header ── */}
       <div style={{
         gridColumn: "1 / -1",
-        background: "#12122a",
-        borderBottom: "1px solid #333",
-        padding: "8px 16px",
+        background: "#0d0d20",
+        borderBottom: "1px solid #2a2a50",
+        padding: "0 16px",
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: 14,
+        fontSize: 13,
       }}>
-        <span style={{ fontWeight: "bold", fontSize: 16 }}>{def.name}</span>
-        <span style={{ color: "#aaa", fontSize: 12 }}>
-          Round {state.roundNumber} · {state.round === "stock" ? "Stock Round" : `OR ${state.operatingRoundNumber}`} · Phase {state.phaseId}
-        </span>
-        {isMyTurn && (
-          <span style={{
-            marginLeft: "auto",
-            background: "#4caf50",
-            color: "#fff",
-            padding: "2px 10px",
-            borderRadius: 12,
-            fontSize: 12,
-            fontWeight: "bold",
-          }}>
+        <span style={{ fontWeight: "bold", fontSize: 15 }}>18xx</span>
+        <span style={{ color: "#555" }}>|</span>
+        <span style={{ color: "#aaa" }}>{def.name}</span>
+        <span style={{ color: "#555" }}>|</span>
+        <span style={{ color: "#78c0f0" }}>{roundLabel}</span>
+        {currentCompany && (
+          <>
+            <span style={{ color: "#555" }}>·</span>
+            <span style={{ color: "#aaa" }}>{currentCompany} operating</span>
+          </>
+        )}
+        <span style={{ color: "#555" }}>·</span>
+        <span style={{ color: "#aaa" }}>Phase {state.phaseId}</span>
+        <span style={{ color: "#555" }}>·</span>
+        <span>Bank: <strong style={{ color: "#ffd700" }}>${state.bank.toLocaleString()}</strong></span>
+
+        {isMyTurn && state.round !== "operating" && (
+          <span style={{ marginLeft: "auto", background: "#2a5020", color: "#80e060", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: "bold" }}>
             YOUR TURN
           </span>
         )}
+        {state.status === "finished" && (
+          <span style={{ marginLeft: "auto", background: "#5a0020", color: "#ff8080", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: "bold" }}>
+            GAME OVER
+          </span>
+        )}
+
         {error && (
-          <div style={{
-            marginLeft: "auto",
-            background: "#c0392b",
-            color: "#fff",
-            padding: "2px 10px",
-            borderRadius: 4,
-            fontSize: 12,
-            cursor: "pointer",
-          }} onClick={clearError}>
+          <div style={{ marginLeft: "auto", background: "#3a1010", border: "1px solid #c0392b", color: "#e07070", padding: "2px 10px", borderRadius: 4, fontSize: 12, cursor: "pointer" }}
+            onClick={clearError}>
             {error} ✕
           </div>
         )}
       </div>
 
-      {/* Main area with tabs */}
-      <div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", borderBottom: "1px solid #333", background: "#12122a" }}>
-          {(["map", "market", "log"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+      {/* ── Main area ── */}
+      <div style={{ overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", background: "#0d0d20", borderBottom: "1px solid #2a2a50", flexShrink: 0 }}>
+          {(["map", "market", "log"] as Tab[]).map((tab) => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
               style={{
-                padding: "6px 16px",
-                background: activeTab === tab ? "#2a2060" : "transparent",
-                border: "none",
-                color: activeTab === tab ? "#fff" : "#aaa",
-                cursor: "pointer",
-                fontSize: 13,
-                borderBottom: activeTab === tab ? "2px solid #6060e0" : "2px solid transparent",
-              }}
-            >
-              {tab === "map" ? "🗺 Map" : tab === "market" ? "📈 Stock Market" : "📋 Log"}
+                padding: "7px 18px", background: "transparent", border: "none",
+                borderBottom: `2px solid ${activeTab === tab ? "#6060e0" : "transparent"}`,
+                color: activeTab === tab ? "#fff" : "#666", cursor: "pointer", fontSize: 12, fontWeight: activeTab === tab ? "bold" : "normal",
+              }}>
+              {tab === "map" ? "Map" : tab === "market" ? "Stock Market" : "Game Log"}
             </button>
           ))}
+          {selectedHex && (
+            <span style={{ padding: "7px 12px", fontSize: 11, color: "#78c0f0", alignSelf: "center" }}>
+              Selected: ({selectedHex.q},{selectedHex.r})
+            </span>
+          )}
         </div>
 
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          {activeTab === "map" && (
-            <HexMap
-              mapDef={def.map}
-              state={state}
-              tiles={def.tiles}
-              selectedHex={selectedHex}
-              onHexClick={setSelectedHex}
-            />
-          )}
+        {/* Tab content */}
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          <div style={{ display: activeTab === "map" ? "block" : "none", height: "100%" }}>
+            <HexMap mapDef={def.map} state={state} tiles={def.tiles} selectedHex={selectedHex} onHexClick={onHexClick} />
+          </div>
           {activeTab === "market" && (
             <div style={{ padding: 16, overflowY: "auto", height: "100%" }}>
-              <h3 style={{ marginBottom: 12, color: "#aaa", fontSize: 13 }}>STOCK MARKET</h3>
+              <div style={{ fontSize: 11, color: "#aaa", marginBottom: 12, fontWeight: 600, letterSpacing: 1 }}>STOCK MARKET</div>
               <StockMarket state={state} def={def} />
             </div>
           )}
           {activeTab === "log" && (
-            <div style={{ height: "100%", overflow: "hidden" }}>
+            <div style={{ height: "100%", overflowY: "auto" }}>
               <GameLog log={state.log} />
             </div>
           )}
         </div>
       </div>
 
-      {/* Right sidebar */}
-      <div style={{
-        borderLeft: "1px solid #333",
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: 0,
-      }}>
-        <div style={{ padding: 12, borderBottom: "1px solid #333" }}>
-          <div style={{ fontSize: 11, color: "#aaa", marginBottom: 8, fontWeight: 600 }}>PLAYERS</div>
+      {/* ── Right sidebar ── */}
+      <div style={{ borderLeft: "1px solid #2a2a50", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+        {/* Action panel (top, scrollable) */}
+        <div style={{ flex: 1, overflowY: "auto", padding: 12, borderBottom: "1px solid #2a2a50" }}>
+          {ctx.type === "auction" && (
+            <AuctionPanel state={state} def={def} myPlayerId={playerId} onAction={onAction} />
+          )}
+          {ctx.type === "stock" && (
+            <StockPanel state={state} def={def} myPlayerId={playerId} onAction={onAction} />
+          )}
+          {ctx.type === "operating" && (
+            <OperatingPanel
+              state={state}
+              def={def}
+              myPlayerId={playerId}
+              selectedHex={selectedHex}
+              onAction={onAction}
+              onRequestTilePicker={() => {
+                if (selectedHex) setShowTilePicker(true);
+                else setActiveTab("map");
+              }}
+            />
+          )}
+        </div>
+
+        {/* Players (always visible, compact) */}
+        <div style={{ padding: 10, borderBottom: "1px solid #2a2a50", flexShrink: 0 }}>
+          <div style={{ fontSize: 10, color: "#555", fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>PLAYERS</div>
           <PlayerPanel state={state} def={def} myPlayerId={playerId} />
         </div>
 
-        <div style={{ padding: 12 }}>
-          <div style={{ fontSize: 11, color: "#aaa", marginBottom: 8, fontWeight: 600 }}>COMPANIES</div>
+        {/* Companies (always visible, compact) */}
+        <div style={{ padding: 10, overflowY: "auto", maxHeight: 220 }}>
+          <div style={{ fontSize: 10, color: "#555", fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>COMPANIES</div>
           <CompanyPanel state={state} def={def} />
         </div>
-
-        {/* Action zone */}
-        {isMyTurn && state.round === "stock" && (
-          <div style={{ padding: 12, borderTop: "1px solid #333", marginTop: "auto" }}>
-            <div style={{ fontSize: 11, color: "#aaa", marginBottom: 8, fontWeight: 600 }}>ACTIONS</div>
-            <button
-              onClick={() => sendAction({ type: "pass_stock", playerId })}
-              style={{
-                width: "100%",
-                padding: "8px",
-                background: "#333",
-                border: "1px solid #555",
-                color: "#fff",
-                borderRadius: 4,
-                cursor: "pointer",
-                fontSize: 13,
-              }}
-            >
-              Pass
-            </button>
-          </div>
-        )}
-        {isMyTurn && state.round === "operating" && (
-          <div style={{ padding: 12, borderTop: "1px solid #333", marginTop: "auto" }}>
-            <div style={{ fontSize: 11, color: "#aaa", marginBottom: 8, fontWeight: 600 }}>ACTIONS</div>
-            <button
-              onClick={() => sendAction({ type: "pass_operate", companyId: state.currentPlayerId })}
-              style={{
-                width: "100%",
-                padding: "8px",
-                background: "#333",
-                border: "1px solid #555",
-                color: "#fff",
-                borderRadius: 4,
-                cursor: "pointer",
-                fontSize: 13,
-              }}
-            >
-              Done Operating
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* ── Tile picker modal ── */}
+      {showTilePicker && selectedHex && (
+        <TilePicker
+          tiles={def.tiles}
+          state={state}
+          coord={selectedHex}
+          companyId={(ctx as OperatingContext).companyOrder[(ctx as OperatingContext).companyIdx] ?? ""}
+          onPlace={(tileId, rotation) => {
+            onAction({ type: "lay_tile", companyId: (ctx as OperatingContext).companyOrder[(ctx as OperatingContext).companyIdx] ?? "", coord: selectedHex, tileId, rotation });
+            setShowTilePicker(false);
+          }}
+          onClose={() => setShowTilePicker(false)}
+        />
+      )}
     </div>
   );
 }

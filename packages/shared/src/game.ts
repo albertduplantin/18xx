@@ -1,7 +1,7 @@
 import type { HexDef, PlacedTile, TileDef, HexCoord } from "./hex.js";
 import type { PublicCompanyDef, PrivateCompanyDef, CompanyState } from "./company.js";
 import type { StockMarketDef, StockPosition, Share } from "./stock.js";
-import type { TrainDef, OwnedTrain } from "./train.js";
+import type { TrainDef } from "./train.js";
 import type { PhaseDef } from "./phase.js";
 import type { PlayerState, PlayerId } from "./player.js";
 
@@ -27,14 +27,54 @@ export type GameDef = {
   readonly layout?: "flat" | "pointy";
 };
 
-export type RoundType = "stock" | "operating" | "auction" | "initial_auction";
+export type RoundType = "stock" | "operating" | "auction";
 
 export type GamePhaseId = string;
 
-export type TurnContext =
-  | { readonly type: "stock"; readonly playerOrder: readonly PlayerId[] }
-  | { readonly type: "operating"; readonly companyOrder: readonly string[] }
-  | { readonly type: "auction"; readonly order: readonly PlayerId[] };
+/** Auction context: sequential bidding on private companies */
+export type AuctionContext = {
+  readonly type: "auction";
+  readonly order: readonly PlayerId[];
+  /** Index of current player in order[] */
+  readonly playerIdx: number;
+  /** Index of the current private being offered */
+  readonly privateIdx: number;
+  /** Current offer price (may be below face value after passes) */
+  readonly currentPrice: number;
+  /** How many consecutive passes on the current private */
+  readonly passCount: number;
+  /** Highest bids per private (for open-bid privates) */
+  readonly bids: Record<string, { playerId: PlayerId; amount: number }>;
+};
+
+/** Stock round context */
+export type StockContext = {
+  readonly type: "stock";
+  /** Turn order for this SR */
+  readonly playerOrder: readonly PlayerId[];
+  /** How many consecutive passes in a row (SR ends when all pass) */
+  readonly consecutivePasses: number;
+  /** Players who already bought a share this SR turn (can't buy twice in one turn) */
+  readonly boughtThisTurn: readonly PlayerId[];
+};
+
+/** Operating round context */
+export type OperatingContext = {
+  readonly type: "operating";
+  /** Companies in operation order (by stock price, descending) */
+  readonly companyOrder: readonly string[];
+  /** Index of the company currently operating */
+  readonly companyIdx: number;
+  /** Which sub-actions the current company has completed this OR turn */
+  readonly companyActions: readonly ORAction[];
+  /** Which OR sub-round this is within the current game round (1-indexed) */
+  readonly orRound: number;
+};
+
+/** Sub-actions a company can take per OR turn */
+export type ORAction = "tile" | "token" | "trains" | "routes";
+
+export type TurnContext = AuctionContext | StockContext | OperatingContext;
 
 /** Complete runtime game state — a plain serializable object */
 export type GameState = {
@@ -45,7 +85,6 @@ export type GameState = {
   readonly currentPlayerId: PlayerId;
   readonly round: RoundType;
   readonly roundNumber: number;
-  readonly operatingRoundNumber: number;
   readonly phaseId: GamePhaseId;
   readonly turnContext: TurnContext;
   readonly map: Record<string, PlacedTile>;
@@ -77,7 +116,7 @@ export type LogEntry = {
 export type GameAction =
   | { readonly type: "bid"; readonly playerId: PlayerId; readonly privateId: string; readonly amount: number }
   | { readonly type: "pass_bid"; readonly playerId: PlayerId }
-  | { readonly type: "buy_share"; readonly playerId: PlayerId; readonly companyId: string; readonly from: "ipo" | "bank_pool" | "player"; readonly fromPlayerId?: PlayerId; readonly parValue?: number }
+  | { readonly type: "buy_share"; readonly playerId: PlayerId; readonly companyId: string; readonly from: "ipo" | "bank_pool"; readonly parValue?: number }
   | { readonly type: "sell_shares"; readonly playerId: PlayerId; readonly companyId: string; readonly count: number }
   | { readonly type: "pass_stock"; readonly playerId: PlayerId }
   | { readonly type: "lay_tile"; readonly companyId: string; readonly coord: HexCoord; readonly tileId: string; readonly rotation: number }
