@@ -1,0 +1,50 @@
+# Fly.io deployment config
+# Deploy with: fly deploy
+# First time:  fly launch --no-deploy (to set up app), then fly deploy
+#
+# Free tier: 3 shared VMs, 160GB bandwidth, 3GB persistent storage
+# This config uses 1 VM with 256MB RAM — enough for 2-4 concurrent games.
+
+app = "18xx-online"
+primary_region = "cdg"   # Paris — change to "iad" (Virginia) or "sin" (Singapore) as preferred
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+
+# Persistent volume for game saves (games.json survives redeployments)
+[mounts]
+  source = "18xx_data"
+  destination = "/app/data"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 50
+    soft_limit = 25
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    path = "/health"
+
+# Memory: 256MB is OK for normal play; 512MB if MCTS slows down
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
