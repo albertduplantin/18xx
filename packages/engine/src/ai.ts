@@ -284,6 +284,7 @@ function findTileLay(state: GameState, def: GameDef, companyId: string): GameAct
   // Pre-build lookups for O(1) access
   const hexDefByKey = new Map(def.map.map((h) => [hexKey(h.coord), h]));
   const tileById = new Map(def.tiles.map((t) => [t.id, t]));
+  const companyCash = state.companies[companyId]?.cash ?? 0;
 
   let bestScore = -1;
   let bestCoord = { q: 0, r: 0 };
@@ -301,8 +302,9 @@ function findTileLay(state: GameState, def: GameDef, companyId: string): GameAct
       const nk = hexKey(nb);
       if (state.map[nk] || seenCoords.has(nk)) continue;
       const hexDef = hexDefByKey.get(nk);
-      // Skip: off-board, already has a pre-placed tile (city), or outside the map
+      // Skip: off-board, pre-placed city tile, outside map, or terrain too expensive
       if (!hexDef || hexDef.offboard || hexDef.tile) continue;
+      if ((hexDef.terrain?.cost ?? 0) > companyCash) continue;
       seenCoords.add(nk);
 
       for (const tile of trackTiles) {

@@ -62,6 +62,9 @@ function describeAction(
     case "pass_bid":
       return `${who}: passe enchère`;
 
+    case "sell_shares":
+      return `${who}: vend ${action.companyId} ×${action.count}`;
+
     case "place_token":
       return `${who}: token ${action.companyId} → (${action.coord.q},${action.coord.r}) [slot ${action.cityIndex}]`;
 
@@ -80,7 +83,7 @@ export function runBotActions(gameId: string, def: GameDef, slots: readonly Lobb
   let iters = 0;
 
   function step() {
-    if (iters++ >= 200) return;
+    if (iters++ >= 1000) return;
 
     const rec = store.get(gameId);
     if (!rec || rec.phase !== "active" || !rec.state) return;
@@ -110,13 +113,14 @@ export function runBotActions(gameId: string, def: GameDef, slots: readonly Lobb
 
     const result = applyAction(state, def, aiAction);
     if (!result.ok) {
-      // Try a random legal move as fallback
+      // Log failure reason, then try a random legal move as fallback
+      const errLog = `[ÉCHEC: ${result.error ?? "?"}]`;
       const legal = getLegalMoves(state, def);
       const fallback = legal[Math.floor(Math.random() * legal.length)];
       if (!fallback) return;
       const r2 = applyAction(state, def, fallback);
       if (!r2.ok) return;
-      const fallbackLog = `[fallback] ${describeAction(fallback, state, def, personality)}`;
+      const fallbackLog = `[fallback] ${describeAction(fallback, state, def, personality)} ${errLog}`;
       const fd = [...newDecisions.slice(-99), fallbackLog];
       store.save({ ...rec, state: r2.state, botDecisions: fd });
       wsManager.broadcast(gameId, r2.state, fd);

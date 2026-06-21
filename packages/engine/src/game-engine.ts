@@ -379,6 +379,9 @@ function applySellShares(
   for (let i = 0; i < action.count; i++) stockPos = moveStock(def, stockPos, "left");
   newState = { ...newState, stockMarket: { ...newState.stockMarket, [action.companyId]: stockPos } };
 
+  // Selling breaks the consecutive-pass chain (like buying does)
+  const stockCtxSell = stockCtx(newState);
+  newState = { ...newState, turnContext: { ...stockCtxSell, consecutivePasses: 0 } };
   newState = log(newState, `${player.name} sells ${action.count}×10% of ${companyDef.name} for $${proceeds}`, player.id);
   return { ok: true, state: newState };
 }
