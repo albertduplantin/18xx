@@ -131,29 +131,39 @@ function tileMoves(state: GameState, def: GameDef, companyId: string): GameActio
   const phase = def.phases.find((p) => p.id === state.phaseId);
   const allowedColors = phase?.tiles ?? ["yellow"];
 
-  // Collect hexes adjacent to any placed tile (proxy for network reach)
-  const candidates = new Set<string>();
-  for (const key of Object.keys(state.map)) {
-    const [qs, rs] = key.split(",");
-    const q = Number(qs), r = Number(rs);
-    for (let dir = 0 as 0; dir < 6; dir++) {
-      const n = hexNeighbor({ q, r }, dir);
-      const nk = hexKey(n);
-      if (state.map[nk]) continue;
-      const hexDef = def.map.find((h) => h.coord.q === n.q && h.coord.r === n.r);
-      if (hexDef && !hexDef.offboard) candidates.add(nk);
+  // Pre-filter tiles once (not per-hex); only the first track tile is used (capped branching)
+  let firstTrackTile: typeof def.tiles[0] | undefined;
+  for (const t of def.tiles) {
+    if (allowedColors.includes(t.color) && t.cities.length === 0 && t.towns.length === 0) {
+      firstTrackTile = t;
+      break;
     }
   }
+  if (!firstTrackTile) return [];
+
+  // Pre-build hex lookup map once — avoids O(n) def.map.find() per candidate hex
+  const hexDefByKey = new Map(def.map.map((h) => [`${h.coord.q},${h.coord.r}`, h]));
 
   const moves: GameAction[] = [];
-  const tiles = def.tiles.filter((t) => allowedColors.includes(t.color) && t.cities.length === 0 && t.towns.length === 0);
+  const seen = new Set<string>();
 
-  for (const key of candidates) {
-    const [qs, rs] = key.split(",");
-    const coord = { q: Number(qs), r: Number(rs) };
-    const tile = tiles[0]; // one tile option per candidate hex to keep branching low
-    if (tile) moves.push({ type: "lay_tile", companyId, coord, tileId: tile.id, rotation: 0 });
+  for (const key of Object.keys(state.map)) {
+    const comma = key.indexOf(",");
+    const q = Number(key.slice(0, comma)), r = Number(key.slice(comma + 1));
+    for (let dir = 0; dir < 6; dir++) {
+      // Inline neighbor calc — avoids hexNeighbor object allocation × 6 × n_placed_tiles
+      const dq = dir === 0 ? 1 : dir === 1 ? 1 : dir === 2 ? 0 : dir === 3 ? -1 : dir === 4 ? -1 : 0;
+      const dr = dir === 0 ? -1 : dir === 1 ? 0 : dir === 2 ? 1 : dir === 3 ? 1 : dir === 4 ? 0 : -1;
+      const nq = q + dq, nr = r + dr;
+      const nk = `${nq},${nr}`;
+      if (state.map[nk] || seen.has(nk)) continue;
+      seen.add(nk);
+      const hexDef = hexDefByKey.get(nk);
+      if (hexDef && !hexDef.offboard && !hexDef.tile) {
+        moves.push({ type: "lay_tile", companyId, coord: { q: nq, r: nr }, tileId: firstTrackTile.id, rotation: 0 });
+        if (moves.length >= 8) return moves; // cap branching factor
+      }
+    }
   }
-
   return moves;
 }

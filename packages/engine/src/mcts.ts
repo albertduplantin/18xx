@@ -38,9 +38,9 @@ const TRAIN_REVENUE_ESTIMATE: Record<string, number> = {
 };
 
 const EXPLORATION   = Math.SQRT2;
-const ROLLOUT_DEPTH = 40;           // increased from 25 — deeper lookahead
+const ROLLOUT_DEPTH = 40;
 const DEFAULT_ITERS = 1500;
-const EPSILON       = 0.08;         // slightly reduced — rely more on policy
+const EPSILON       = 0.05;  // low — rely on policy; random fallback only for diversity
 
 // ─── Node ─────────────────────────────────────────────────────────────────────
 
@@ -365,8 +365,13 @@ function smartTileLay(state: GameState, def: GameDef, companyId: string): GameAc
 
 // ─── Rollout ──────────────────────────────────────────────────────────────────
 
+// Empty log sentinel reused across rollouts (avoids alloc + repeated copying)
+const EMPTY_LOG: never[] = [];
+
 function rollout(startState: GameState, def: GameDef): Record<string, number> {
-  let state = startState;
+  // Strip accumulated log before rolling out — game-engine appends to log on every
+  // action, so a 200-entry log would be copied 40 times per rollout (huge GC churn).
+  let state: GameState = startState.log.length > 0 ? { ...startState, log: EMPTY_LOG } : startState;
 
   for (let d = 0; d < ROLLOUT_DEPTH && state.status === "active"; d++) {
     let action: GameAction | null = null;
