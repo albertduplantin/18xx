@@ -536,7 +536,7 @@ function applyLayTile(
     [key]: {
       tileId: action.tileId,
       rotation: (action.rotation % 6) as import("@18xx/shared").Direction,
-      tokenSlots: Array(tile.cities.length).fill(null) as null[],
+      tokenSlots: tile.cities.flatMap((c) => Array((c as { slots?: number }).slots ?? 1).fill(null)) as null[],
     },
   };
 
@@ -884,7 +884,9 @@ export function createInitialState(
       initialMap[k] = {
         tileId: hexDef.tile.id,
         rotation: 0 as import("@18xx/shared").Direction,
-        tokenSlots: hexDef.tile.cities.map(() => null as null),
+        tokenSlots: hexDef.tile.cities.flatMap((c: { slots?: number }) =>
+          Array(c.slots ?? 1).fill(null)
+        ) as null[],
       };
     }
   }

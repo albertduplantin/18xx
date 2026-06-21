@@ -186,7 +186,13 @@ export const GAME_1830: GameDef = {
   // NOTE: Token costs, home hexes, and starting prices need verification.
   // ── PUBLIC COMPANIES ──────────────────────────────────────────────────────
   // Colors, token costs, and home hexes verified against 18xx.games source
-  // (tobymao/18xx entities.rb). Home hex coordinates are in our axial system.
+  // Home hexes mapped to actual city tiles on our simplified map:
+  //   Pittsburgh {q:0,r:2} 2 slots → PRR (slot 0) + C&O (slot 1)
+  //   New York   {q:5,r:1} 2 slots → NYC (slot 0) + NYNH (slot 1)
+  //   Albany     {q:4,r:-1} 1 slot → CPR
+  //   Baltimore  {q:2,r:3} 1 slot → B&O
+  //   Philadelphia {q:3,r:2} 1 slot → B&M (approx; real home is further north)
+  //   Buffalo    {q:1,r:-1} 1 slot → ERIE
   companies: [
     {
       id: "PRR",
@@ -195,7 +201,7 @@ export const GAME_1830: GameDef = {
       color: "#32763f",
       textColor: "#ffffff",
       tokens: [0, 40, 100, 100],
-      coordinates: [0, 1],
+      coordinates: [0, 2],
       floatPercent: 60,
       shares: [20, 10, 10, 10, 10, 10, 10, 10, 10],
     },
@@ -206,7 +212,7 @@ export const GAME_1830: GameDef = {
       color: "#474548",
       textColor: "#ffffff",
       tokens: [0, 40, 100, 100],
-      coordinates: [2, 3],
+      coordinates: [5, 1],
       floatPercent: 60,
       shares: [20, 10, 10, 10, 10, 10, 10, 10, 10],
     },
@@ -217,7 +223,7 @@ export const GAME_1830: GameDef = {
       color: "#d1232a",
       textColor: "#ffffff",
       tokens: [0, 40, 100, 100],
-      coordinates: [4, 5],
+      coordinates: [4, -1],
       floatPercent: 60,
       shares: [20, 10, 10, 10, 10, 10, 10, 10, 10],
     },
@@ -228,7 +234,7 @@ export const GAME_1830: GameDef = {
       color: "#025aaa",
       textColor: "#ffffff",
       tokens: [0, 40, 100],
-      coordinates: [6, 7],
+      coordinates: [2, 3],
       floatPercent: 60,
       shares: [20, 10, 10, 10, 10, 10, 10, 10, 10],
     },
@@ -236,10 +242,11 @@ export const GAME_1830: GameDef = {
       id: "CO",
       name: "Chesapeake & Ohio Railway",
       shortName: "C&O",
-      color: "#add8e6",   // Light blue — verified from 18xx.games
+      color: "#add8e6",
       textColor: "#000000",
       tokens: [0, 40, 100],
-      coordinates: [8, 9],
+      coordinates: [0, 2],
+      city: 1,
       floatPercent: 60,
       shares: [20, 10, 10, 10, 10, 10, 10, 10, 10],
     },
@@ -247,10 +254,10 @@ export const GAME_1830: GameDef = {
       id: "ERIE",
       name: "Erie Railroad",
       shortName: "ERIE",
-      color: "#fff500",   // Bright yellow — verified from 18xx.games
+      color: "#fff500",
       textColor: "#000000",
       tokens: [0, 40, 100],
-      coordinates: [10, 11],
+      coordinates: [1, -1],
       floatPercent: 60,
       shares: [20, 10, 10, 10, 10, 10, 10, 10, 10],
     },
@@ -258,10 +265,11 @@ export const GAME_1830: GameDef = {
       id: "NYNH",
       name: "New York, New Haven & Hartford Railroad",
       shortName: "NYNH",
-      color: "#d88e39",   // Orange-brown — verified from 18xx.games
+      color: "#d88e39",
       textColor: "#ffffff",
       tokens: [0, 40],
-      coordinates: [12, 13],
+      coordinates: [5, 1],
+      city: 1,
       floatPercent: 60,
       shares: [20, 10, 10, 10, 10, 10, 10, 10, 10],
     },
@@ -269,10 +277,10 @@ export const GAME_1830: GameDef = {
       id: "BM",
       name: "Boston & Maine Railroad",
       shortName: "B&M",
-      color: "#95c054",   // Light green — verified from 18xx.games
+      color: "#95c054",
       textColor: "#000000",
       tokens: [0, 40],
-      coordinates: [14, 15],
+      coordinates: [3, 2],
       floatPercent: 60,
       shares: [20, 10, 10, 10, 10, 10, 10, 10, 10],
     },
@@ -313,7 +321,7 @@ export const GAME_1830: GameDef = {
       coord: { q: 0,  r: 2 },
       label: "Pittsburgh",
       terrain: { type: "water", cost: 80 },
-      tile: { id: "PITT_MAP", color: "yellow", paths: [{ from: 0, to: 3 }], cities: [{ slots: 1, revenue: 30 }], towns: [] },
+      tile: { id: "PITT_MAP", color: "yellow", paths: [{ from: 0, to: 3 }], cities: [{ slots: 2, revenue: 30 }], towns: [] },
     },
     {
       coord: { q: 1,  r: -1 },
