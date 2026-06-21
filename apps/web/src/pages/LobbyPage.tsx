@@ -40,6 +40,7 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
   const [activeGames, setActiveGames] = useState<GameSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Game setup state
   const [humanSlots, setHumanSlots] = useState(1);
@@ -82,7 +83,12 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
       });
       const data = await res.json() as { gameId: string; phase: string };
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Erreur");
-      onJoinGame(data.gameId, playerId);
+      // humanSlots = 0 → pure bot game, join as observer
+      if (humanSlots === 0) {
+        onJoinGame(data.gameId, playerId, true);
+      } else {
+        onJoinGame(data.gameId, playerId);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Impossible de créer la partie");
     } finally {
@@ -120,7 +126,7 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
           gameDefId: "1830",
           creatorId: playerId,
           creatorName: playerName.trim(),
-          humanSlots: 1, // creator is observer by joining as non-participant... handled on join
+          humanSlots: 0,  // pure bot game — creator joins as observer
           bots: [
             { personality: "balanced" },
             { personality: "aggressive" },
@@ -131,13 +137,18 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
       });
       const data = await res.json() as { gameId: string };
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Erreur");
-      // Join as observer (playerId not in slots)
-      handleWatch(data.gameId);
+      onJoinGame(data.gameId, playerId, true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {
       setCreating(false);
     }
+  }
+
+  async function handleDelete(gameId: string) {
+    await fetch(`/games/${gameId}`, { method: "DELETE" });
+    setConfirmDeleteId(null);
+    fetchGames();
   }
 
   const s = {
@@ -194,18 +205,23 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
 
         {/* Human slots */}
         <div style={{ marginBottom: 16 }}>
-          <label style={s.label}>Joueurs humains ({humanSlots})</label>
+          <label style={s.label}>Joueurs humains</label>
           <div style={{ display: "flex", gap: 6 }}>
-            {[1, 2, 3, 4, 5, 6].filter((n) => n + bots.length <= 6).map((n) => (
+            {[0, 1, 2, 3, 4, 5, 6].filter((n) => n + bots.length <= 6 && (n === 0 || n + bots.length >= 2)).map((n) => (
               <button key={n} onClick={() => setHumanSlots(n)}
-                style={{ ...btn(humanSlots === n ? "#4040c0" : "#1a1a3a", humanSlots === n ? "#6060e0" : "#333"), padding: "6px 14px", fontSize: 13 }}>
-                {n}
+                style={{ ...btn(humanSlots === n ? (n === 0 ? "#2a1a40" : "#4040c0") : "#1a1a3a", humanSlots === n ? (n === 0 ? "#7030c0" : "#6060e0") : "#333"), padding: "6px 14px", fontSize: 13 }}>
+                {n === 0 ? "👁 0" : n}
               </button>
             ))}
           </div>
+          {humanSlots === 0 && (
+            <p style={{ fontSize: 11, color: "#a060e0", marginTop: 6 }}>
+              Partie 100% bots — tu regardes en observateur.
+            </p>
+          )}
           {humanSlots > 1 && (
             <p style={{ fontSize: 11, color: "#666", marginTop: 6 }}>
-              Les {humanSlots - 1} autres joueur(s) devront rejoindre via le lien d'invitation.
+              Les {humanSlots - 1} autre(s) joueur(s) rejoignent via lien d'invitation.
             </p>
           )}
         </div>
@@ -244,8 +260,8 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
 
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={handleCreate} disabled={creating || totalPlayers < 2}
-            style={{ ...btn(totalPlayers >= 2 ? "#4040c0" : "#222"), flex: 1, opacity: totalPlayers < 2 ? 0.5 : 1 }}>
-            {creating ? "Création…" : "Créer la partie"}
+            style={{ ...btn(humanSlots === 0 ? "#2a1a40" : (totalPlayers >= 2 ? "#4040c0" : "#222"), humanSlots === 0 ? "#7030c0" : "#6060e0"), flex: 1, opacity: totalPlayers < 2 ? 0.5 : 1 }}>
+            {creating ? "Création…" : humanSlots === 0 ? "👁 Lancer et observer" : "Créer la partie"}
           </button>
           <button onClick={onOpenEditor} style={{ ...btn("#1e3050", "#3050a0"), color: "#78c0f0" }}>
             Éditeur
@@ -288,7 +304,7 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
                       {bots.length > 0 && ` + ${bots.length} bot(s)`}
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     {isLobby && (
                       <button onClick={() => handleJoin(g.gameId)}
                         style={{ ...btn("#2a4060", "#3060a0"), fontSize: 12, padding: "5px 12px", color: "#78c0f0" }}>
@@ -303,6 +319,25 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
                       <button onClick={() => onJoinGame(g.gameId, playerId)}
                         style={{ ...btn("#2a2060", "#4040c0"), fontSize: 12, padding: "5px 12px" }}>
                         Reprendre
+                      </button>
+                    )}
+                    {confirmDeleteId === g.gameId ? (
+                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <span style={{ fontSize: 11, color: "#e07070" }}>Supprimer ?</span>
+                        <button onClick={() => handleDelete(g.gameId)}
+                          style={{ ...btn("#6a1010", "#a02020"), fontSize: 11, padding: "3px 8px", color: "#ffaaaa" }}>
+                          Oui
+                        </button>
+                        <button onClick={() => setConfirmDeleteId(null)}
+                          style={{ ...btn("transparent", "#333"), fontSize: 11, padding: "3px 8px", color: "#666" }}>
+                          Non
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setConfirmDeleteId(g.gameId)}
+                        style={{ ...btn("transparent", "#2a1010"), fontSize: 13, padding: "3px 8px", color: "#554", lineHeight: 1 }}
+                        title="Supprimer cette partie">
+                        ✕
                       </button>
                     )}
                   </div>

@@ -17,9 +17,8 @@ const CreateGameSchema = z.object({
   gameDefId: z.string(),
   creatorId: z.string(),
   creatorName: z.string(),
-  // Human player slots (including creator). Must be 1–6 total.
-  humanSlots: z.number().int().min(1).max(6).default(1),
-  // Bot slots to fill remaining spots
+  // 0 = pure bot game (creator becomes observer); 1–6 includes human players
+  humanSlots: z.number().int().min(0).max(6).default(1),
   bots: z.array(z.object({ personality: PersonalitySchema })).max(6).default([]),
 });
 
@@ -54,16 +53,20 @@ export const gamesRoutes: FastifyPluginAsync = async (fastify) => {
 
     const id = randomUUID();
 
-    // Build slots: creator first, then empty human slots, then bots
+    // humanSlots = 0 → pure bot game; creator is not a player (will join as observer)
     const slots: LobbySlot[] = [
-      { id: creatorId, name: creatorName, isBot: false, personality: "balanced", joined: true },
-      ...Array.from({ length: humanSlots - 1 }, (_, i) => ({
-        id: `open-slot-${i}`,
-        name: `Joueur ${i + 2}`,
-        isBot: false,
-        personality: "balanced" as BotPersonality,
-        joined: false,
-      })),
+      ...(humanSlots > 0
+        ? [
+            { id: creatorId, name: creatorName, isBot: false, personality: "balanced" as BotPersonality, joined: true },
+            ...Array.from({ length: humanSlots - 1 }, (_, i) => ({
+              id: `open-slot-${i}`,
+              name: `Joueur ${i + 2}`,
+              isBot: false,
+              personality: "balanced" as BotPersonality,
+              joined: false,
+            })),
+          ]
+        : []),
       ...bots.map((b, i) => ({
         id: `bot-${id}-${i}`,
         name: `Bot ${i + 1} (${b.personality})`,
@@ -139,6 +142,13 @@ export const gamesRoutes: FastifyPluginAsync = async (fastify) => {
     if (!def) return reply.status(500).send({ error: "Game definition missing" });
 
     return startGame(record.id, def, record.slots, reply);
+  });
+
+  // ── Delete game ──────────────────────────────────────────────────────────
+  fastify.delete<{ Params: { id: string } }>("/games/:id", async (req, reply) => {
+    const deleted = store.delete(req.params.id);
+    if (!deleted) return reply.status(404).send({ error: "Game not found" });
+    return reply.send({ ok: true });
   });
 
   // ── List games ────────────────────────────────────────────────────────────
