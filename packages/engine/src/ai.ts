@@ -140,11 +140,20 @@ function conAuction(state: GameState, def: GameDef, botId: string, ctx: AuctionC
   const priv = def.privates[ctx.privateIdx];
   if (!priv || player.cash < ctx.currentPrice) return { type: "pass_bid", playerId: botId };
 
-  // Very conservative: only buy if revenue/price ≥ 15% AND we keep $200 in reserve
   const cashAfter = player.cash - ctx.currentPrice;
-  if (cashAfter < 200) return { type: "pass_bid", playerId: botId };
   const ratio = priv.revenue / ctx.currentPrice;
-  if (ratio >= 0.15) return { type: "bid", playerId: botId, privateId: priv.id, amount: ctx.currentPrice };
+
+  // Deadlock prevention: if we're the only one who can afford this private, just buy it
+  const canAfford = player.cash >= ctx.currentPrice;
+  const othersCanAfford = state.players.some((p) => p.id !== botId && p.cash >= ctx.currentPrice);
+  if (canAfford && !othersCanAfford) {
+    return { type: "bid", playerId: botId, privateId: priv.id, amount: ctx.currentPrice };
+  }
+
+  // Normal conservative logic: buy if good value and keep $100 reserve
+  if (cashAfter >= 100 && ratio >= 0.12) {
+    return { type: "bid", playerId: botId, privateId: priv.id, amount: ctx.currentPrice };
+  }
 
   return { type: "pass_bid", playerId: botId };
 }
@@ -153,16 +162,31 @@ function conStock(state: GameState, def: GameDef, botId: string, ctx: StockConte
   const player = state.players.find((p) => p.id === botId)!;
   if (ctx.boughtThisTurn.includes(botId)) return { type: "pass_stock", playerId: botId };
 
-  // Conservative: prefer cheapest par value
+  // Check if any company is already started — if not, we MUST start one to avoid deadlock
+  const anyStarted = Object.values(state.companies).some(
+    (c) => c.status === "in_progress" || c.status === "floated"
+  );
+  // Without any company, use a $50 buffer; otherwise keep $150 for future purchases
+  const buffer = anyStarted ? 150 : 50;
+
   for (const company of def.companies) {
     const cs = state.companies[company.id];
     if (cs?.status !== "unstarted") continue;
     for (const par of [67, 71, 76, 82, 90, 100] as const) {
-      if (player.cash >= par * 2 + 200) { // keep extra $200 buffer
+      if (player.cash >= par * 2 + buffer) {
         return { type: "buy_share", playerId: botId, companyId: company.id, from: "ipo", parValue: par };
       }
     }
   }
+
+  // Also consider buying a share of an already-started company if cheap enough
+  const candidates = def.companies
+    .filter((c) => { const cs = state.companies[c.id]; return cs?.status === "in_progress" || cs?.status === "floated"; })
+    .map((c) => ({ id: c.id, price: state.stockMarket[c.id] ? priceAt(def, state.stockMarket[c.id]!) : 0 }))
+    .filter((c) => player.cash >= c.price + buffer && c.price > 0)
+    .sort((a, b) => a.price - b.price); // prefer cheapest
+  if (candidates[0]) return { type: "buy_share", playerId: botId, companyId: candidates[0].id, from: "ipo" };
+
   return { type: "pass_stock", playerId: botId };
 }
 

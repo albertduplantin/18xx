@@ -13,6 +13,7 @@ import { OperatingPanel } from "../components/actions/OperatingPanel.js";
 import { TilePicker } from "../components/actions/TilePicker.js";
 import { useGameStore } from "../store/game-store.js";
 import { RulesButton } from "../components/RulesModal.js";
+import { ObserverPanel } from "../components/ObserverPanel.js";
 
 type Tab = "map" | "market" | "log";
 
@@ -216,13 +217,14 @@ export function GamePage({ gameId, playerId, onLeave }: { gameId: string; player
 
       {/* ── Right sidebar ── */}
       <div style={{ borderLeft: "1px solid #2a2a50", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ flex: 1, overflowY: "auto", padding: 12, borderBottom: "1px solid #2a2a50" }}>
-          {isObserver ? (
-            <div style={{ background: "#1a0a2a", border: "1px solid #4a20a0", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#a060e0", textAlign: "center" }}>
-              👁 Mode observateur — la partie se déroule en direct
-            </div>
-          ) : (
-            <>
+        {isObserver ? (
+          // Full observer panel — replaces action + player + company panels
+          <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+            <ObserverPanel state={state} def={def} />
+          </div>
+        ) : (
+          <>
+            <div style={{ flex: 1, overflowY: "auto", padding: 12, borderBottom: "1px solid #2a2a50" }}>
               {ctx.type === "auction" && (
                 <AuctionPanel state={state} def={def} myPlayerId={playerId} onAction={onAction} />
               )}
@@ -243,19 +245,19 @@ export function GamePage({ gameId, playerId, onLeave }: { gameId: string; player
                   }}
                 />
               )}
-            </>
-          )}
-        </div>
+            </div>
 
-        <div style={{ padding: 10, borderBottom: "1px solid #2a2a50", flexShrink: 0 }}>
-          <div style={{ fontSize: 10, color: "#555", fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>PLAYERS</div>
-          <PlayerPanel state={state} def={def} myPlayerId={playerId} />
-        </div>
+            <div style={{ padding: 10, borderBottom: "1px solid #2a2a50", flexShrink: 0 }}>
+              <div style={{ fontSize: 10, color: "#555", fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>PLAYERS</div>
+              <PlayerPanel state={state} def={def} myPlayerId={playerId} />
+            </div>
 
-        <div style={{ padding: 10, overflowY: "auto", maxHeight: 220 }}>
-          <div style={{ fontSize: 10, color: "#555", fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>COMPANIES</div>
-          <CompanyPanel state={state} def={def} />
-        </div>
+            <div style={{ padding: 10, overflowY: "auto", maxHeight: 220 }}>
+              <div style={{ fontSize: 10, color: "#555", fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>COMPANIES</div>
+              <CompanyPanel state={state} def={def} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Tile picker popup (contextual, appears near clicked hex) ── */}
