@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { TileDef, HexCoord, GameState } from "@18xx/shared";
 import { hexCorners, rotatePaths } from "@18xx/engine";
+import { trackEndpoint } from "../HexMap.js";
 
 const TILE_COLORS: Record<string, string> = {
   yellow: "#e8c832",
@@ -15,186 +16,212 @@ const COLOR_ORDER = ["white", "yellow", "green", "brown", "gray"];
 type Props = {
   tiles: readonly TileDef[];
   state: GameState;
-  /** Colors available in the current phase — derived from def.phases */
   allowedColors: readonly string[];
   coord: HexCoord;
   companyId: string;
+  /** Screen position of the clicked hex — popup appears here */
+  screenPos?: { x: number; y: number };
   onPlace: (tileId: string, rotation: number) => void;
   onClose: () => void;
 };
 
-const SIZE = 34;
+const MINI = 28;   // mini hex radius for grid thumbnails
+const PREV = 40;   // preview hex radius
 
-function MiniHex({ tile, rotation, selected }: { tile: TileDef; rotation: number; selected: boolean }) {
-  const cx = SIZE, cy = SIZE;
+// ─── Mini hex SVG ─────────────────────────────────────────────────────────────
+
+function MiniHex({ tile, rotation, size = MINI, selected = false }: {
+  tile: TileDef;
+  rotation: number;
+  size?: number;
+  selected?: boolean;
+}) {
+  const cx = size + 2, cy = size + 2;
   const paths = rotatePaths(tile.paths, rotation);
   const bg = TILE_COLORS[tile.color] ?? "#ccc";
+  const trackColor = tile.color === "white" || tile.color === "yellow" ? "#d0c8a8" : "#f8f4e8";
 
-  function endpoint(dir: number) {
-    const angle = (dir * Math.PI) / 3;
-    return {
-      x: cx + Math.cos(angle) * SIZE * 0.95,
-      y: cy + Math.sin(angle) * SIZE * 0.95,
-    };
+  function ep(dir: number) {
+    const e = trackEndpoint(dir, size);
+    return { x: cx + e.x, y: cy + e.y };
   }
 
   return (
-    <svg width={SIZE * 2 + 4} height={SIZE * 2 + 12} style={{ display: "block" }}>
-      <polygon points={hexCorners(cx, cy, SIZE)} fill={bg}
-        stroke={selected ? "#6060f0" : "#6b5a3a"} strokeWidth={selected ? 2.5 : 1} />
+    <svg width={size * 2 + 4} height={size * 2 + 4} style={{ display: "block" }}>
+      <polygon points={hexCorners(cx, cy, size).split(" ").join(" ")}
+        fill={bg} stroke={selected ? "#6060f0" : "#6b5a3a"} strokeWidth={selected ? 2 : 1} />
 
       {paths.map((p, i) => {
-        const f = endpoint(p.from);
-        const t = endpoint(p.to);
-        const qx = (f.x + t.x) / 2 * 0.3 + cx * 0.7;
-        const qy = (f.y + t.y) / 2 * 0.3 + cy * 0.7;
+        const f = ep(p.from), t = ep(p.to);
+        // Control point at hex center
+        const d = `M${f.x} ${f.y} Q${cx} ${cy} ${t.x} ${t.y}`;
         return (
           <g key={i}>
-            <path d={`M${f.x} ${f.y} Q${qx} ${qy} ${t.x} ${t.y}`}
-              stroke="rgba(0,0,0,0.3)" strokeWidth={SIZE * 0.20} fill="none" strokeLinecap="round" />
-            <path d={`M${f.x} ${f.y} Q${qx} ${qy} ${t.x} ${t.y}`}
-              stroke="#f8f4e8" strokeWidth={SIZE * 0.13} fill="none" strokeLinecap="round" />
+            <path d={d} stroke="rgba(0,0,0,0.3)" strokeWidth={size * 0.22} fill="none" strokeLinecap="round" />
+            <path d={d} stroke={trackColor}        strokeWidth={size * 0.13} fill="none" strokeLinecap="round" />
           </g>
         );
       })}
 
       {tile.cities.map((city, i) => {
         const angle = tile.cities.length > 1 ? (i * Math.PI * 2) / tile.cities.length - Math.PI / 2 : 0;
-        const dx = tile.cities.length > 1 ? Math.cos(angle) * SIZE * 0.28 : 0;
-        const dy = tile.cities.length > 1 ? Math.sin(angle) * SIZE * 0.28 : 0;
+        const dx = tile.cities.length > 1 ? Math.cos(angle) * size * 0.28 : 0;
+        const dy = tile.cities.length > 1 ? Math.sin(angle) * size * 0.28 : 0;
         return (
           <g key={i} transform={`translate(${cx + dx},${cy + dy})`}>
-            <circle r={SIZE * 0.20} fill="#f0ece0" stroke="#2a1a00" strokeWidth={1.5} />
-            {city.slots > 1 && (
-              <text x={0} y={0} textAnchor="middle" dominantBaseline="middle"
-                fontSize={SIZE * 0.22} fill="#555" fontWeight="bold">{city.slots}</text>
-            )}
+            <circle r={size * 0.24} fill="#f5ece0" stroke="#1a0800" strokeWidth={1.5} />
           </g>
         );
       })}
 
       {tile.towns.map((_, i) => {
-        const s = SIZE * 0.14;
+        const w = size * 0.22, h = size * 0.12;
         return (
-          <rect key={i} x={cx - s} y={cy - s} width={s * 2} height={s * 2}
-            fill="#2a1a00" stroke="#0a0800" strokeWidth={1} rx={2} />
+          <rect key={i} x={cx - w / 2} y={cy - h / 2} width={w} height={h}
+            fill="#1a0a00" stroke="#000" strokeWidth={0.5} rx={2} />
         );
       })}
-
-      <text x={cx} y={SIZE * 2 + 9} textAnchor="middle" fontSize={9} fill="#aaa" fontWeight="600"
-        fontFamily="monospace">
-        #{tile.id}
-      </text>
     </svg>
   );
 }
 
-export function TilePicker({ tiles, state, allowedColors, coord, companyId, onPlace, onClose }: Props) {
+// ─── Popup tile picker ────────────────────────────────────────────────────────
+
+export function TilePicker({ tiles, state, allowedColors, coord, companyId, screenPos, onPlace, onClose }: Props) {
   const [rotation, setRotation] = useState(0);
   const [colorFilter, setColorFilter] = useState<string>(allowedColors[0] ?? "yellow");
   const [selected, setSelected] = useState<TileDef | null>(null);
 
-  // Only show tiles of colors allowed in the current phase
+  // Reset state whenever the target hex changes
+  useEffect(() => {
+    setSelected(null);
+    setRotation(0);
+    setColorFilter(allowedColors[0] ?? "yellow");
+  }, [coord.q, coord.r, allowedColors]);
+
   const available = tiles.filter((t) => allowedColors.includes(t.color));
   const filtered = available.filter((t) => t.color === colorFilter);
-
   const availableColorTabs = COLOR_ORDER.filter((c) => allowedColors.includes(c));
 
+  // Position the popup near the click point, clamped to viewport
+  const W = 340, H = 420;
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+  const rawX = (screenPos?.x ?? vw / 2) + 16;
+  const rawY = (screenPos?.y ?? vh / 2) - H / 2;
+  const left = Math.min(rawX, vw - W - 8);
+  const top  = Math.max(8, Math.min(rawY, vh - H - 8));
+
   return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)",
-      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-    }}>
+    <>
+      {/* Dismiss backdrop */}
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 900 }}
+        onClick={onClose}
+      />
+
+      {/* Popup */}
       <div style={{
-        background: "#1a1a30", border: "1px solid #4a4a80", borderRadius: 12,
-        padding: 20, width: 580, maxHeight: "85vh", display: "flex", flexDirection: "column", gap: 12,
-        boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+        position: "fixed",
+        left, top,
+        width: W,
+        maxHeight: H,
+        zIndex: 901,
+        background: "#1a1a2e",
+        border: "1px solid #4a4a80",
+        borderRadius: 10,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
       }}>
+
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: "bold", color: "#fff" }}>
-              Choose Tile — ({coord.q},{coord.r})
-            </div>
-            <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
-              Phase {state.phaseId} · {companyId} operating
-            </div>
-          </div>
-          <button onClick={onClose}
-            style={{ marginLeft: "auto", background: "none", border: "none", color: "#888", fontSize: 20, cursor: "pointer", lineHeight: 1 }}>
-            ✕
-          </button>
+        <div style={{ padding: "8px 12px", background: "#12122a", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: "bold", color: "#fff" }}>
+            Tuile → ({coord.q},{coord.r})
+          </span>
+          <span style={{ fontSize: 11, color: "#666", marginLeft: 2 }}>{companyId} · Phase {state.phaseId}</span>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", color: "#666", fontSize: 16, cursor: "pointer", lineHeight: 1 }}>✕</button>
         </div>
 
         {/* Color tabs */}
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 4, padding: "6px 8px", background: "#12122a", borderBottom: "1px solid #222" }}>
           {availableColorTabs.map((c) => (
             <button key={c} onClick={() => { setColorFilter(c); setSelected(null); }}
               style={{
-                padding: "5px 14px", borderRadius: 16, border: "2px solid",
-                borderColor: colorFilter === c ? "#6060e0" : "transparent",
-                cursor: "pointer", fontSize: 12, fontWeight: "bold",
+                padding: "3px 10px", borderRadius: 12, border: `2px solid ${colorFilter === c ? "#6060e0" : "transparent"}`,
+                cursor: "pointer", fontSize: 11, fontWeight: "bold",
                 background: TILE_COLORS[c] ?? "#333",
                 color: c === "yellow" || c === "white" ? "#333" : "#fff",
-                textTransform: "capitalize",
               }}>
-              {c} ({available.filter((t) => t.color === c).length})
+              {c[0]!.toUpperCase() + c.slice(1)} ({available.filter((t) => t.color === c).length})
             </button>
           ))}
         </div>
 
         {/* Tile grid */}
-        <div style={{ overflowY: "auto", flex: 1, display: "flex", flexWrap: "wrap", gap: 6, padding: 4 }}>
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexWrap: "wrap", gap: 4, padding: 6 }}>
           {filtered.map((tile) => (
             <div key={tile.id}
-              onClick={() => setSelected(tile)}
-              title={`Tile #${tile.id} — ${tile.cities.length} cit., ${tile.towns.length} town, ${tile.paths.length} paths`}
+              onClick={() => setSelected(tile.id === selected?.id ? null : tile)}
+              title={`Tuile #${tile.id}`}
               style={{
-                border: `2px solid ${selected?.id === tile.id ? "#6060e0" : "rgba(255,255,255,0.1)"}`,
-                borderRadius: 8, cursor: "pointer", padding: 3,
-                background: selected?.id === tile.id ? "#2a2060" : "rgba(255,255,255,0.04)",
+                border: `2px solid ${selected?.id === tile.id ? "#6060e0" : "rgba(255,255,255,0.08)"}`,
+                borderRadius: 6, cursor: "pointer", padding: 2,
+                background: selected?.id === tile.id ? "#2a2060" : "rgba(255,255,255,0.03)",
               }}>
               <MiniHex tile={tile} rotation={selected?.id === tile.id ? rotation : 0} selected={selected?.id === tile.id} />
             </div>
           ))}
           {filtered.length === 0 && (
-            <div style={{ color: "#555", fontSize: 13, padding: 12 }}>
-              No {colorFilter} tiles in the set.
+            <div style={{ color: "#555", fontSize: 12, padding: 10 }}>
+              Aucune tuile {colorFilter} disponible.
             </div>
           )}
         </div>
 
-        {/* Rotation selector + confirm */}
+        {/* Selected tile: rotation + preview + confirm */}
         {selected && (
-          <div style={{ borderTop: "1px solid #333", paddingTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 12, color: "#aaa" }}>
-              Tile <strong style={{ color: "#fff" }}>#{selected.id}</strong> · Rotation:
+          <div style={{ borderTop: "1px solid #2a2a40", padding: "8px 10px", background: "#12122a" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              {/* Preview */}
+              <div style={{ flexShrink: 0 }}>
+                <MiniHex tile={selected} rotation={rotation} size={PREV} selected />
+              </div>
+
+              {/* Rotation controls */}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: "#888", marginBottom: 4 }}>Rotation</div>
+                <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                  {[0, 1, 2, 3, 4, 5].map((r) => (
+                    <button key={r} onClick={() => setRotation(r)}
+                      style={{
+                        width: 38, height: 24, cursor: "pointer", fontSize: 10, fontWeight: "bold",
+                        background: rotation === r ? "#4040c0" : "#252540",
+                        border: `1px solid ${rotation === r ? "#6060e0" : "#333"}`,
+                        borderRadius: 3, color: rotation === r ? "#fff" : "#888",
+                      }}>
+                      {r * 60}°
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 3 }}>
-              {[0, 1, 2, 3, 4, 5].map((r) => (
-                <button key={r} onClick={() => setRotation(r)}
-                  style={{
-                    width: 36, height: 28, cursor: "pointer", fontSize: 11, fontWeight: "bold",
-                    background: rotation === r ? "#4040c0" : "#2a2a40",
-                    border: `1px solid ${rotation === r ? "#6060e0" : "#444"}`,
-                    borderRadius: 4, color: rotation === r ? "#fff" : "#888",
-                  }}>
-                  {r * 60}°
-                </button>
-              ))}
+
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={onClose}
+                style={{ flex: 1, padding: "7px", background: "#252540", border: "1px solid #444", borderRadius: 6, color: "#888", cursor: "pointer", fontSize: 12 }}>
+                Annuler
+              </button>
+              <button onClick={() => onPlace(selected.id, rotation)}
+                style={{ flex: 2, padding: "7px", background: "#4040c0", border: "1px solid #6060e0", borderRadius: 6, color: "#fff", cursor: "pointer", fontWeight: "bold", fontSize: 13 }}>
+                Poser la tuile #{selected.id}
+              </button>
             </div>
-            <button
-              onClick={() => onPlace(selected.id, rotation)}
-              style={{
-                marginLeft: "auto", padding: "9px 22px",
-                background: "#4040c0", border: "1px solid #6060e0", borderRadius: 6,
-                color: "#fff", cursor: "pointer", fontWeight: "bold", fontSize: 13,
-              }}>
-              Place Tile
-            </button>
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }

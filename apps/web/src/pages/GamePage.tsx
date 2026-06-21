@@ -21,6 +21,7 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
   const [selectedHex, setSelectedHex] = useState<HexCoord | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("map");
   const [showTilePicker, setShowTilePicker] = useState(false);
+  const [tilePickerPos, setTilePickerPos] = useState<{ x: number; y: number } | undefined>();
 
   useEffect(() => {
     connectWs(gameId, playerId);
@@ -34,6 +35,13 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
     setSelectedHex((prev) =>
       prev?.q === coord.q && prev?.r === coord.r ? null : coord,
     );
+    setActiveTab("map");
+  }, []);
+
+  const onValidTileClick = useCallback((coord: HexCoord, screenX: number, screenY: number) => {
+    setSelectedHex(coord);
+    setTilePickerPos({ x: screenX, y: screenY });
+    setShowTilePicker(true);
     setActiveTab("map");
   }, []);
 
@@ -173,6 +181,7 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
               tiles={def.tiles}
               selectedHex={selectedHex}
               onHexClick={onHexClick}
+              onValidTileClick={onValidTileClick}
               validTileHexes={validTileHexes}
               activeRoutes={activeRoutes}
             />
@@ -227,7 +236,7 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
         </div>
       </div>
 
-      {/* ── Tile picker modal ── */}
+      {/* ── Tile picker popup (contextual, appears near clicked hex) ── */}
       {showTilePicker && selectedHex && (() => {
         const opCtx = ctx as OperatingContext;
         const companyId = opCtx.companyOrder[opCtx.companyIdx] ?? "";
@@ -239,6 +248,7 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
             allowedColors={allowedColors}
             coord={selectedHex}
             companyId={companyId}
+            {...(tilePickerPos ? { screenPos: tilePickerPos } : {})}
             onPlace={(tileId, rotation) => {
               onAction({ type: "lay_tile", companyId, coord: selectedHex, tileId, rotation });
               setShowTilePicker(false);

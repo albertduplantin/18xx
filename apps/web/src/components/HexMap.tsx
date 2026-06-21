@@ -3,11 +3,8 @@ import type { HexDef, PlacedTile, TileDef, HexCoord, GameState, GameDef, Route }
 import { hexToPixel, hexCorners, hexKey, rotatePaths } from "@18xx/engine";
 
 const HEX_SIZE = 52;
-
-// Physical 18xx board background — warm parchment/tan, not green felt
 const BOARD_BG = "#b8a87a";
 
-// Tile fill colors matching physical 18xx tile set
 const TILE_COLORS: Record<string, string> = {
   white:  "#e8e0ca",
   yellow: "#e8c832",
@@ -26,6 +23,8 @@ type Props = {
   tiles: readonly TileDef[];
   selectedHex: HexCoord | null;
   onHexClick: (coord: HexCoord) => void;
+  /** Called when clicking a valid tile-placement hex — passes screen coords for popup positioning */
+  onValidTileClick?: (coord: HexCoord, screenX: number, screenY: number) => void;
   validTileHexes?: ReadonlySet<string>;
   activeRoutes?: readonly Route[];
 };
@@ -37,26 +36,36 @@ function phaseRevenue(revenue: number | Record<string, number>, phaseId: string)
   return revenue[phaseId] ?? Object.values(revenue)[0] ?? 0;
 }
 
-// ─── Track rendering ──────────────────────────────────────────────────────────
+// ─── Track geometry ───────────────────────────────────────────────────────────
+//
+// Flat-top hex: edge midpoints (where tracks exit) are at angle (dir - 0.5) × 60°
+// from center, at distance = size × √3/2 (the apothem, not the circumradius).
+//
+// dir 0 → 330° (NE edge)   dir 1 → 30° (SE edge)   dir 2 → 90° (S edge)
+// dir 3 → 150° (SW edge)   dir 4 → 210° (W edge)   dir 5 → 270° (N edge)
+//
+// Using center (0,0) as Bézier control point gives:
+//   • delta=3 (straight):  f+t = 0  → P1 on the line P0-P2  → straight line ✓
+//   • delta=2 (120° arc):  smooth arc bowing slightly toward center ✓
+//   • delta=1 (60° arc):   tight corner arc staying near the outer edge ✓
 
-function trackEndpoint(dir: number, size: number) {
-  const angle = (dir * Math.PI) / 3;
-  return { x: Math.cos(angle) * size, y: Math.sin(angle) * size };
+export function trackEndpoint(dir: number, size: number): { x: number; y: number } {
+  const angle = (dir - 0.5) * Math.PI / 3;
+  const r = size * Math.sqrt(3) / 2;   // apothem = edge midpoint distance
+  return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
 }
 
+// ─── Track path ───────────────────────────────────────────────────────────────
+
 function TrackPath({ from, to, size, color }: { from: number; to: number; size: number; color: string }) {
-  const f = trackEndpoint(from, size * 0.97);
-  const t = trackEndpoint(to, size * 0.97);
-  const cx = (f.x + t.x) / 2 * 0.4;
-  const cy = (f.y + t.y) / 2 * 0.4;
+  const f = trackEndpoint(from, size);
+  const t = trackEndpoint(to, size);
+  // Control point = hex center → makes straight tracks straight and curves natural
+  const d = `M ${f.x} ${f.y} Q 0 0 ${t.x} ${t.y}`;
   return (
     <>
-      {/* Shadow/outline for contrast */}
-      <path d={`M ${f.x} ${f.y} Q ${cx} ${cy} ${t.x} ${t.y}`}
-        stroke="rgba(0,0,0,0.3)" strokeWidth={size * 0.20} fill="none" strokeLinecap="round" />
-      {/* Main track line — white on physical tiles */}
-      <path d={`M ${f.x} ${f.y} Q ${cx} ${cy} ${t.x} ${t.y}`}
-        stroke={color} strokeWidth={size * 0.14} fill="none" strokeLinecap="round" />
+      <path d={d} stroke="rgba(0,0,0,0.35)" strokeWidth={size * 0.22} fill="none" strokeLinecap="round" />
+      <path d={d} stroke={color}            strokeWidth={size * 0.13} fill="none" strokeLinecap="round" />
     </>
   );
 }
@@ -70,24 +79,23 @@ function CityCircle({ slots, size, tokens, companyColors, revenue }: {
   companyColors: Record<string, string>;
   revenue: number;
 }) {
-  const r = size * 0.22;
-  const tokenR = slots === 1 ? r : r * 0.8;
+  const r = size * 0.25;
+  const spread = r * 1.3;
 
   return (
     <g>
       {Array.from({ length: slots }, (_, i) => {
         const angle = slots > 1 ? (i * Math.PI * 2) / slots - Math.PI / 2 : 0;
-        const dx = slots > 1 ? Math.cos(angle) * r * 1.2 : 0;
-        const dy = slots > 1 ? Math.sin(angle) * r * 1.2 : 0;
+        const dx = slots > 1 ? Math.cos(angle) * spread : 0;
+        const dy = slots > 1 ? Math.sin(angle) * spread : 0;
         const token = tokens[i] ?? null;
-        const tokenColor = token ? (companyColors[token] ?? "#888") : "#f0ece0";
-        const textColor = token ? "#ffffff" : "#000";
+        const fill = token ? (companyColors[token] ?? "#888") : "#f5ece0";
         return (
           <g key={i} transform={`translate(${dx},${dy})`}>
-            <circle r={tokenR} fill={tokenColor} stroke="#2a1a00" strokeWidth={1.5} />
+            <circle r={r} fill={fill} stroke="#1a0800" strokeWidth={2} />
             {token && (
-              <text textAnchor="middle" dominantBaseline="middle" fontSize={tokenR * 0.85}
-                fill={textColor} fontWeight="bold"
+              <text textAnchor="middle" dominantBaseline="middle"
+                fontSize={r * 0.75} fill="#fff" fontWeight="bold"
                 fontFamily="'Copperplate Gothic', Copperplate, serif">
                 {token}
               </text>
@@ -95,13 +103,13 @@ function CityCircle({ slots, size, tokens, companyColors, revenue }: {
           </g>
         );
       })}
-      {/* Revenue bubble — white oval with revenue value, top-right of city */}
       {revenue > 0 && (
-        <g transform={`translate(${size * 0.38}, ${-size * 0.42})`}>
+        <g transform={`translate(${size * 0.38}, ${-size * 0.40})`}>
           <rect x={-14} y={-8} width={28} height={16} rx={8}
-            fill="#f5f0e0" stroke="#5a4020" strokeWidth={1.2} />
-          <text textAnchor="middle" dominantBaseline="middle" fontSize={9.5} fill="#1a0a00"
-            fontWeight="bold" fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
+            fill="#fffbe0" stroke="#4a3010" strokeWidth={1.2} />
+          <text textAnchor="middle" dominantBaseline="middle"
+            fontSize={9.5} fill="#1a0a00" fontWeight="bold"
+            fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
             {revenue}
           </text>
         </g>
@@ -110,19 +118,22 @@ function CityCircle({ slots, size, tokens, companyColors, revenue }: {
   );
 }
 
-// ─── Town dot ─────────────────────────────────────────────────────────────────
+// ─── Town ─────────────────────────────────────────────────────────────────────
+// In 18xx, towns are drawn as a filled rectangle (bar) across the track.
 
-function TownDot({ size, revenue }: { size: number; revenue: number }) {
-  const s = size * 0.18;
+function Town({ size, revenue }: { size: number; revenue: number }) {
+  const w = size * 0.22, h = size * 0.12;
   return (
     <g>
-      <rect x={-s} y={-s} width={s * 2} height={s * 2} fill="#1a1000" stroke="#0a0800" strokeWidth={1} rx={2} />
+      <rect x={-w / 2} y={-h / 2} width={w} height={h}
+        fill="#1a0a00" stroke="#000" strokeWidth={0.5} rx={2} />
       {revenue > 0 && (
-        <g transform={`translate(${size * 0.32}, ${-size * 0.32})`}>
+        <g transform={`translate(${size * 0.30}, ${-size * 0.32})`}>
           <rect x={-12} y={-7} width={24} height={14} rx={7}
-            fill="#f5f0e0" stroke="#5a4020" strokeWidth={1.2} />
-          <text textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="#1a0a00"
-            fontWeight="bold" fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
+            fill="#fffbe0" stroke="#4a3010" strokeWidth={1.2} />
+          <text textAnchor="middle" dominantBaseline="middle"
+            fontSize={9} fill="#1a0a00" fontWeight="bold"
+            fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
             {revenue}
           </text>
         </g>
@@ -131,10 +142,11 @@ function TownDot({ size, revenue }: { size: number; revenue: number }) {
   );
 }
 
-// ─── Single hex cell ──────────────────────────────────────────────────────────
+// ─── Single hex ───────────────────────────────────────────────────────────────
 
 function HexCell({
-  hexDef, placed, tileDef, selected, highlighted, size, companyColors, phaseId, onClick,
+  hexDef, placed, tileDef, selected, highlighted, size, companyColors, phaseId,
+  onClick, onValidTileClick,
 }: {
   hexDef: HexDef;
   placed: PlacedTile | undefined;
@@ -145,6 +157,7 @@ function HexCell({
   companyColors: Record<string, string>;
   phaseId: string;
   onClick: () => void;
+  onValidTileClick?: (e: React.MouseEvent) => void;
 }) {
   const { x, y } = hexToPixel(hexDef.coord, size);
   const isOffboard = !!hexDef.offboard;
@@ -156,15 +169,25 @@ function HexCell({
     ? (TILE_COLORS[effectiveTile.color] ?? TILE_COLORS.white!)
     : TILE_COLORS.white!;
 
-  // Physical 18xx: tracks are white lines on colored tiles, tan on white/undeveloped
+  // White track on colored tiles; tan on white/undeveloped hexes
   const trackColor = (effectiveTile && effectiveTile.color !== "white") ? "#f8f4e8" : "#d0c8a8";
 
   const rotation = placed?.rotation ?? 0;
   const paths = effectiveTile ? rotatePaths(effectiveTile.paths, rotation) : [];
   const tokenSlots = placed?.tokenSlots ?? [];
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (highlighted && onValidTileClick) {
+      e.stopPropagation();
+      onValidTileClick(e);
+    } else {
+      onClick();
+    }
+  };
+
   return (
-    <g transform={`translate(${x},${y})`} onClick={onClick} style={{ cursor: "pointer" }}>
+    <g transform={`translate(${x},${y})`} onClick={handleClick} style={{ cursor: "pointer" }}>
+      {/* Hex background */}
       <polygon
         points={hexCorners(0, 0, size)}
         fill={bgColor}
@@ -172,13 +195,15 @@ function HexCell({
         strokeWidth={selected ? 3 : highlighted ? 2.5 : 1}
       />
       {highlighted && (
-        <polygon points={hexCorners(0, 0, size)} fill="rgba(80,200,64,0.15)" style={{ pointerEvents: "none" }} />
+        <polygon points={hexCorners(0, 0, size)} fill="rgba(80,200,64,0.18)" style={{ pointerEvents: "none" }} />
       )}
 
+      {/* Track paths */}
       {paths.map((p, i) => (
         <TrackPath key={i} from={p.from} to={p.to} size={size} color={trackColor} />
       ))}
 
+      {/* Cities */}
       {effectiveTile?.cities.map((city, i) => (
         <CityCircle key={i} slots={city.slots} size={size}
           tokens={tokenSlots.slice(i * city.slots, (i + 1) * city.slots)}
@@ -186,45 +211,44 @@ function HexCell({
           revenue={phaseRevenue(city.revenue, phaseId)} />
       ))}
 
+      {/* Towns */}
       {effectiveTile?.towns.map((town, i) => (
-        <TownDot key={i} size={size} revenue={phaseRevenue(town.revenue, phaseId)} />
+        <Town key={i} size={size} revenue={phaseRevenue(town.revenue, phaseId)} />
       ))}
 
-      {/* Hex label (city name) */}
+      {/* City name */}
       {hexDef.label && (
-        <text
-          y={size * 0.6}
-          textAnchor="middle"
+        <text y={size * 0.62} textAnchor="middle"
           fontSize={isOffboard ? size * 0.15 : size * 0.16}
           fill={isOffboard ? "#f5e8d0" : "#2a1a00"}
           fontWeight="700"
           fontFamily="'Copperplate Gothic', Copperplate, 'Palatino Linotype', serif"
-          style={{ pointerEvents: "none" }}
-        >
+          style={{ pointerEvents: "none" }}>
           {hexDef.label}
         </text>
       )}
 
-      {/* Terrain surcharge badge (mountain / water) */}
+      {/* Terrain surcharge badge */}
       {hexDef.terrain && !isOffboard && (
         <g transform={`translate(${size * 0.52}, ${-size * 0.52})`} style={{ pointerEvents: "none" }}>
           <circle r={size * 0.18}
             fill={hexDef.terrain.type === "mountain" ? "#6b5a3a" : "#2060a0"}
             stroke="#fff" strokeWidth={1} />
-          <text textAnchor="middle" dominantBaseline="middle" fontSize={size * 0.14}
-            fill="#fff" fontWeight="bold" fontFamily="monospace">
+          <text textAnchor="middle" dominantBaseline="middle"
+            fontSize={size * 0.14} fill="#fff" fontWeight="bold" fontFamily="monospace">
             {hexDef.terrain.type === "mountain" ? "⛰" : "~"}
           </text>
         </g>
       )}
 
-      {/* Off-board revenue badge */}
+      {/* Offboard revenue */}
       {isOffboard && hexDef.offboard && (
         <g transform={`translate(0, ${-size * 0.25})`} style={{ pointerEvents: "none" }}>
           <rect x={-22} y={-11} width={44} height={22} rx={11}
-            fill="#f5ece0" stroke="#7a1a1a" strokeWidth={1.5} />
-          <text textAnchor="middle" dominantBaseline="middle" fontSize={11} fill="#7a1a1a"
-            fontWeight="bold" fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
+            fill="#fffbe0" stroke="#7a1a1a" strokeWidth={1.5} />
+          <text textAnchor="middle" dominantBaseline="middle"
+            fontSize={11} fill="#7a1a1a" fontWeight="bold"
+            fontFamily="'Palatino Linotype', Palatino, Georgia, serif">
             ${phaseRevenue(hexDef.offboard.revenue, phaseId)}
           </text>
         </g>
@@ -277,7 +301,9 @@ function RouteOverlay({ routes, size }: { routes: readonly Route[]; size: number
 
 // ─── Full map ─────────────────────────────────────────────────────────────────
 
-export function HexMap({ mapDef, state, def, tiles, selectedHex, onHexClick, validTileHexes, activeRoutes }: Props) {
+export function HexMap({
+  mapDef, state, def, tiles, selectedHex, onHexClick, onValidTileClick, validTileHexes, activeRoutes,
+}: Props) {
   const [viewBox, setViewBox] = useState({ x: -400, y: -300, w: 900, h: 700 });
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
@@ -320,8 +346,7 @@ export function HexMap({ mapDef, state, def, tiles, selectedHex, onHexClick, val
 
   return (
     <svg
-      width="100%"
-      height="100%"
+      width="100%" height="100%"
       viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
       style={{ display: "block", userSelect: "none", cursor: isPanning ? "grabbing" : "grab" }}
       onMouseDown={onMouseDown}
@@ -352,6 +377,9 @@ export function HexMap({ mapDef, state, def, tiles, selectedHex, onHexClick, val
             companyColors={companyColors}
             phaseId={state.phaseId}
             onClick={() => onHexClick(hex.coord)}
+            {...(isHighlighted && onValidTileClick
+              ? { onValidTileClick: (e: React.MouseEvent) => onValidTileClick(hex.coord, e.clientX, e.clientY) }
+              : {})}
           />
         );
       })}

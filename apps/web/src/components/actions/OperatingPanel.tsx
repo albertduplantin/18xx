@@ -68,21 +68,12 @@ export function OperatingPanel({ state, def, myPlayerId, selectedHex, calculated
       {isPresident && (
         <>
           {/* 1. Lay tile */}
-          <ActionSection title="1. LAY TRACK TILE" done={!canTile} optional>
-            <button
-              onClick={onRequestTilePicker}
-              disabled={!canTile}
-              style={btnStyle(!canTile, "#1a3a50")}
-            >
-              {selectedHex
-                ? `Place tile at (${selectedHex.q},${selectedHex.r})`
-                : "Click a green hex on the map, then choose a tile"}
-            </button>
-            {canTile && (
-              <div style={{ fontSize: 10, color: "#4caf50", marginTop: 3 }}>
-                Green hexes on map = valid placements
+          <ActionSection title="1. POSER UNE TUILE" done={!canTile} optional>
+            {canTile ? (
+              <div style={{ fontSize: 12, color: "#4caf50", padding: "6px 0" }}>
+                Cliquez sur un hex vert directement sur la carte — un menu apparaîtra pour choisir la tuile.
               </div>
-            )}
+            ) : null}
           </ActionSection>
 
           {/* 2. Place token */}
