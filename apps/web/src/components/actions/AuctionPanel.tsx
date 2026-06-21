@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { GameState, GameDef, AuctionContext } from "@18xx/shared";
 import { TurnGuide } from "../TurnGuide.js";
 import { Advisor } from "../Advisor.js";
@@ -15,6 +15,11 @@ export function AuctionPanel({ state, def, myPlayerId, onAction }: Props) {
   const isMyTurn = state.currentPlayerId === myPlayerId;
   const currentPriv = def.privates[ctx.privateIdx];
   const [bidAmount, setBidAmount] = useState<number>(ctx.currentPrice);
+
+  // Reset bid amount whenever the current private or its price changes
+  useEffect(() => {
+    setBidAmount(ctx.currentPrice);
+  }, [ctx.privateIdx, ctx.currentPrice]);
 
   if (!currentPriv) return null;
 
