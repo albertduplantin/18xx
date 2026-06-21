@@ -60,7 +60,10 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
   }, []);
 
   function fetchGames() {
-    fetch("/games").then((r) => r.json()).then((d) => setActiveGames(d as GameSummary[])).catch(() => {});
+    fetch("/games")
+      .then((r) => r.ok ? r.json() : Promise.resolve([]))
+      .then((d) => setActiveGames(d as GameSummary[]))
+      .catch(() => {});
   }
 
   const totalPlayers = humanSlots + bots.length;
@@ -81,8 +84,13 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
           bots: bots.map((p) => ({ personality: p })),
         }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = `Erreur serveur (${res.status})`;
+        try { msg = (JSON.parse(text) as { error?: string }).error ?? msg; } catch {}
+        throw new Error(msg);
+      }
       const data = await res.json() as { gameId: string; phase: string };
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Erreur");
       // humanSlots = 0 → pure bot game, join as observer
       if (humanSlots === 0) {
         onJoinGame(data.gameId, playerId, true);
@@ -267,18 +275,6 @@ export function LobbyPage({ onJoinGame, onOpenEditor, inviteGameId }: Props) {
             Éditeur
           </button>
         </div>
-      </div>
-
-      {/* Spectate all-bot game */}
-      <div style={s.card}>
-        <div style={s.h2}>Mode spectateur — bots s'affrontent</div>
-        <p style={{ fontSize: 13, color: "#888", marginBottom: 12 }}>
-          Lance une partie avec 4 bots aux personnalités différentes (Équilibré, Agressif, Conservateur, Aléatoire) et observe en temps réel. Idéal pour comparer les stratégies.
-        </p>
-        <button onClick={handleCreateBotSpectacle} disabled={creating}
-          style={{ ...btn("#1e4030", "#2a6040"), color: "#70d0a0", width: "100%" }}>
-          🎭 Lancer une partie de bots à observer
-        </button>
       </div>
 
       {/* Active games list */}
