@@ -226,19 +226,25 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
       </div>
 
       {/* ── Tile picker modal ── */}
-      {showTilePicker && selectedHex && (
-        <TilePicker
-          tiles={def.tiles}
-          state={state}
-          coord={selectedHex}
-          companyId={(ctx as OperatingContext).companyOrder[(ctx as OperatingContext).companyIdx] ?? ""}
-          onPlace={(tileId, rotation) => {
-            onAction({ type: "lay_tile", companyId: (ctx as OperatingContext).companyOrder[(ctx as OperatingContext).companyIdx] ?? "", coord: selectedHex, tileId, rotation });
-            setShowTilePicker(false);
-          }}
-          onClose={() => setShowTilePicker(false)}
-        />
-      )}
+      {showTilePicker && selectedHex && (() => {
+        const opCtx = ctx as OperatingContext;
+        const companyId = opCtx.companyOrder[opCtx.companyIdx] ?? "";
+        const allowedColors = def.phases.find((p) => p.id === state.phaseId)?.tiles ?? ["yellow"];
+        return (
+          <TilePicker
+            tiles={def.tiles}
+            state={state}
+            allowedColors={allowedColors}
+            coord={selectedHex}
+            companyId={companyId}
+            onPlace={(tileId, rotation) => {
+              onAction({ type: "lay_tile", companyId, coord: selectedHex, tileId, rotation });
+              setShowTilePicker(false);
+            }}
+            onClose={() => setShowTilePicker(false)}
+          />
+        );
+      })()}
     </div>
   );
 }

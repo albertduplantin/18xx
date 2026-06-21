@@ -15,7 +15,7 @@ import type {
 } from "@18xx/shared";
 import { priceAt, findParPosition, moveStock } from "./stock-market.js";
 import { totalRevenue } from "./route-calculator.js";
-import { hexKey } from "./hex-grid.js";
+import { hexKey, hexNeighbor } from "./hex-grid.js";
 
 export type ActionResult =
   | { ok: true; state: GameState }
@@ -478,13 +478,41 @@ function applyLayTile(
   if (compId !== action.companyId) return { ok: false, error: "Not your company's turn" };
   if (ctx.companyActions.includes("tile")) return { ok: false, error: "Already laid a tile this turn" };
 
+  // Hex must exist on the map and not be an off-board destination
+  const hexDef = def.map.find((h) => h.coord.q === action.coord.q && h.coord.r === action.coord.r);
+  if (!hexDef) return { ok: false, error: "Hex is not on the board" };
+  if (hexDef.offboard) return { ok: false, error: "Cannot place tiles on off-board hexes" };
+
   const key = hexKey(action.coord);
+  const existing = state.map[key];
+
+  // Inline (pre-printed) tiles cannot be overwritten — only standard tile upgrades allowed
+  const isPrinted = !!hexDef.tile;
   const tile = def.tiles.find((t) => t.id === action.tileId);
-  if (!tile) return { ok: false, error: "Tile not found" };
+  if (!tile) return { ok: false, error: "Tile not found in tile set" };
 
   const phase = def.phases.find((p) => p.id === state.phaseId);
   if (!phase?.tiles.includes(tile.color)) {
     return { ok: false, error: `Color ${tile.color} not available in phase ${state.phaseId}` };
+  }
+
+  if (existing) {
+    if (isPrinted) return { ok: false, error: "Pre-printed city tiles cannot be replaced yet" };
+    // Upgrade: new tile must be a higher color than the existing one
+    const colorRank: Record<string, number> = { white: 0, yellow: 1, green: 2, brown: 3, gray: 4 };
+    const existingTile = def.tiles.find((t) => t.id === existing.tileId);
+    if (existingTile && (colorRank[tile.color] ?? 0) <= (colorRank[existingTile.color] ?? 0)) {
+      return { ok: false, error: `Must upgrade to a higher-color tile (current: ${existingTile.color})` };
+    }
+  }
+
+  // Tile must be adjacent to at least one already-placed tile (network connectivity)
+  const adjacentToNetwork = ([0, 1, 2, 3, 4, 5] as const).some((dir) => {
+    const n = hexNeighbor(action.coord, dir);
+    return !!state.map[hexKey(n)];
+  });
+  if (!adjacentToNetwork) {
+    return { ok: false, error: "Tile must be adjacent to existing track or a city" };
   }
 
   const newMap = {
@@ -498,7 +526,7 @@ function applyLayTile(
 
   const updatedCtx: OperatingContext = { ...ctx, companyActions: [...ctx.companyActions, "tile"] };
   let newState: GameState = { ...state, map: newMap, turnContext: updatedCtx };
-  newState = log(newState, `${compId} lays tile #${action.tileId} at (${action.coord.q},${action.coord.r})`, state.currentPlayerId);
+  newState = log(newState, `${compId} lays tile #${action.tileId} at (${action.coord.q},${action.coord.r}) rot.${action.rotation}`, state.currentPlayerId);
   return { ok: true, state: newState };
 }
 
@@ -824,6 +852,20 @@ export function createInitialState(
     bids: {},
   };
 
+  // Pre-populate the map with all pre-printed tiles (inline city/town tiles on specific hexes).
+  // Without this, the route calculator and tile validator can't see the starting cities.
+  const initialMap: Record<string, import("@18xx/shared").PlacedTile> = {};
+  for (const hexDef of def.map) {
+    if (hexDef.tile && !hexDef.offboard) {
+      const k = hexKey(hexDef.coord);
+      initialMap[k] = {
+        tileId: hexDef.tile.id,
+        rotation: 0 as import("@18xx/shared").Direction,
+        tokenSlots: hexDef.tile.cities.map(() => null as null),
+      };
+    }
+  }
+
   return {
     id: `game-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     gameDefId: def.id,
@@ -834,7 +876,7 @@ export function createInitialState(
     roundNumber: 1,
     phaseId: def.phases[0]!.id,
     turnContext: ctx,
-    map: {},
+    map: initialMap,
     companies,
     privateCompanies,
     stockMarket: {},

@@ -1,6 +1,16 @@
 import type { HexCoord, GameState, GameDef, PlacedTile, TileDef, Route } from "@18xx/shared";
 import { hexKey, hexNeighbor, oppositeDirection, rotatePaths } from "./hex-grid.js";
 
+/**
+ * Find a tile by ID in either the standard tile bank or the map's inline
+ * (pre-printed) tile definitions. Pre-printed city tiles like "NYC_MAP" only
+ * exist in def.map, not in def.tiles.
+ */
+function findTileDef(def: GameDef, tileId: string): TileDef | undefined {
+  return def.tiles.find((t) => t.id === tileId)
+    ?? def.map.find((h) => h.tile?.id === tileId)?.tile;
+}
+
 type Node = {
   key: string;
   coord: HexCoord;
@@ -34,7 +44,7 @@ function buildGraph(state: GameState, def: GameDef, phaseId: string): NetworkGra
   }
 
   for (const [key, placed] of Object.entries(state.map)) {
-    const tileDef = def.tiles.find((t) => t.id === placed.tileId);
+    const tileDef = findTileDef(def, placed.tileId);
     if (!tileDef) continue;
 
     const coordParts = key.split(",");
@@ -75,7 +85,7 @@ function buildGraph(state: GameState, def: GameDef, phaseId: string): NetworkGra
       const neighborPlaced = state.map[neighborKey];
       if (!neighborPlaced) continue;
 
-      const neighborDef = def.tiles.find((t) => t.id === neighborPlaced.tileId);
+      const neighborDef = findTileDef(def, neighborPlaced.tileId);
       if (!neighborDef) continue;
 
       const neighborPaths = rotatePaths(neighborDef.paths, neighborPlaced.rotation);
