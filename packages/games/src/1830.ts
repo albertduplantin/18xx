@@ -110,13 +110,14 @@ export const GAME_1830: GameDef = {
   ],
 
   // ── TRAINS ────────────────────────────────────────────────────────────────
+  // Prices verified against 18xx.games source (tobymao/18xx game.rb)
   trains: [
-    { id: "2", name: "2",   distance: 2,  price: 100, rusts: "4",  available: 6 },
-    { id: "3", name: "3",   distance: 3,  price: 180, rusts: "6",  available: 5 },
-    { id: "4", name: "4",   distance: 4,  price: 300,              available: 4 },
-    { id: "5", name: "5",   distance: 5,  price: 450,              available: 3 },
-    { id: "6", name: "6",   distance: 6,  price: 630,              available: 2 },
-    { id: "D", name: "D", distance: 999, price: 900, discountable: true, available: 20 },
+    { id: "2", name: "2",   distance: 2,  price:   80, rusts: "4",  available: 6 },
+    { id: "3", name: "3",   distance: 3,  price:  180, rusts: "6",  available: 5 },
+    { id: "4", name: "4",   distance: 4,  price:  300,              available: 4 },
+    { id: "5", name: "5",   distance: 5,  price:  450,              available: 3 },
+    { id: "6", name: "6",   distance: 6,  price:  630,              available: 2 },
+    { id: "D", name: "D", distance: 999, price: 1100, discountable: true, available: 20 },
   ],
 
   // ── PRIVATE COMPANIES ─────────────────────────────────────────────────────
@@ -180,12 +181,15 @@ export const GAME_1830: GameDef = {
 
   // ── PUBLIC COMPANIES ──────────────────────────────────────────────────────
   // NOTE: Token costs, home hexes, and starting prices need verification.
+  // ── PUBLIC COMPANIES ──────────────────────────────────────────────────────
+  // Colors, token costs, and home hexes verified against 18xx.games source
+  // (tobymao/18xx entities.rb). Home hex coordinates are in our axial system.
   companies: [
     {
       id: "PRR",
       name: "Pennsylvania Railroad",
       shortName: "PRR",
-      color: "#2d6b2d",    // Tuscan green — PRR corporate color
+      color: "#32763f",
       textColor: "#ffffff",
       tokens: [0, 40, 100, 100],
       coordinates: [0, 1],
@@ -196,7 +200,7 @@ export const GAME_1830: GameDef = {
       id: "NYC",
       name: "New York Central Railroad",
       shortName: "NYC",
-      color: "#1a1a1a",    // Black — NYC's livery color
+      color: "#474548",
       textColor: "#ffffff",
       tokens: [0, 40, 100, 100],
       coordinates: [2, 3],
@@ -207,7 +211,7 @@ export const GAME_1830: GameDef = {
       id: "CPR",
       name: "Canadian Pacific Railway",
       shortName: "CPR",
-      color: "#b31a1a",    // Deep red — CPR corporate color
+      color: "#d1232a",
       textColor: "#ffffff",
       tokens: [0, 40, 100, 100],
       coordinates: [4, 5],
@@ -218,7 +222,7 @@ export const GAME_1830: GameDef = {
       id: "BO",
       name: "Baltimore & Ohio Railroad",
       shortName: "B&O",
-      color: "#1a4a9f",    // Royal blue — B&O standard color
+      color: "#025aaa",
       textColor: "#ffffff",
       tokens: [0, 40, 100],
       coordinates: [6, 7],
@@ -229,8 +233,8 @@ export const GAME_1830: GameDef = {
       id: "CO",
       name: "Chesapeake & Ohio Railway",
       shortName: "C&O",
-      color: "#00787a",    // Teal — C&O corporate color
-      textColor: "#ffffff",
+      color: "#add8e6",   // Light blue — verified from 18xx.games
+      textColor: "#000000",
       tokens: [0, 40, 100],
       coordinates: [8, 9],
       floatPercent: 60,
@@ -240,7 +244,7 @@ export const GAME_1830: GameDef = {
       id: "ERIE",
       name: "Erie Railroad",
       shortName: "ERIE",
-      color: "#c8a000",    // Gold/yellow — Erie standard 18xx color
+      color: "#fff500",   // Bright yellow — verified from 18xx.games
       textColor: "#000000",
       tokens: [0, 40, 100],
       coordinates: [10, 11],
@@ -251,7 +255,7 @@ export const GAME_1830: GameDef = {
       id: "NYNH",
       name: "New York, New Haven & Hartford Railroad",
       shortName: "NYNH",
-      color: "#cc5500",    // Orange — NYNH standard 18xx color
+      color: "#d88e39",   // Orange-brown — verified from 18xx.games
       textColor: "#ffffff",
       tokens: [0, 40],
       coordinates: [12, 13],
@@ -262,8 +266,8 @@ export const GAME_1830: GameDef = {
       id: "BM",
       name: "Boston & Maine Railroad",
       shortName: "B&M",
-      color: "#7a1a1a",    // Maroon — B&M standard 18xx color
-      textColor: "#ffffff",
+      color: "#95c054",   // Light green — verified from 18xx.games
+      textColor: "#000000",
       tokens: [0, 40],
       coordinates: [14, 15],
       floatPercent: 60,
