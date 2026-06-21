@@ -102,12 +102,26 @@ function aggStock(state: GameState, def: GameDef, botId: string, ctx: StockConte
   return { type: "pass_stock", playerId: botId };
 }
 
+function placeHomeToken(def: GameDef, companyId: string): GameAction | null {
+  const companyDef = def.companies.find((c) => c.id === companyId);
+  if (!companyDef || companyDef.coordinates.length < 2) return null;
+  const q = companyDef.coordinates[0]!;
+  const r = companyDef.coordinates[1]!;
+  return { type: "place_token", companyId, coord: { q, r }, cityIndex: companyDef.city ?? 0 };
+}
+
 function aggOperate(state: GameState, def: GameDef, ctx: OperatingContext): GameAction {
   const companyId = ctx.companyOrder[ctx.companyIdx] ?? "";
   const company = state.companies[companyId];
   if (!company) return { type: "pass_operate", companyId };
 
   const done = new Set(ctx.companyActions);
+
+  // Place home token if not yet placed (free on first OR turn)
+  if (!done.has("token") && company.tokens.length === 0) {
+    const tok = placeHomeToken(def, companyId);
+    if (tok) return tok;
+  }
 
   // Tile first
   if (!done.has("tile")) {
@@ -196,6 +210,12 @@ function conOperate(state: GameState, def: GameDef, ctx: OperatingContext): Game
   if (!company) return { type: "pass_operate", companyId };
 
   const done = new Set(ctx.companyActions);
+
+  // Place home token if not yet placed (free on first OR turn)
+  if (!done.has("token") && company.tokens.length === 0) {
+    const tok = placeHomeToken(def, companyId);
+    if (tok) return tok;
+  }
 
   // Tile first
   if (!done.has("tile")) {

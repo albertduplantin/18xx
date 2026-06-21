@@ -74,12 +74,14 @@ function stockMoves(state: GameState, def: GameDef, ctx: StockContext): GameActi
     }
   }
 
-  // Sell non-president shares
-  const soldCompanies = new Set<string>();
-  for (const share of player.shares) {
-    if (!share.president && !soldCompanies.has(share.companyId)) {
-      moves.push({ type: "sell_shares", playerId, companyId: share.companyId, count: 1 });
-      soldCompanies.add(share.companyId);
+  // Sell non-president shares — only BEFORE buying (1830 rule: cannot sell after buying)
+  if (!alreadyBought) {
+    const soldCompanies = new Set<string>();
+    for (const share of player.shares) {
+      if (!share.president && !soldCompanies.has(share.companyId)) {
+        moves.push({ type: "sell_shares", playerId, companyId: share.companyId, count: 1 });
+        soldCompanies.add(share.companyId);
+      }
     }
   }
 
@@ -95,6 +97,16 @@ function operatingMoves(state: GameState, def: GameDef, ctx: OperatingContext): 
 
   const done = new Set(ctx.companyActions);
   const moves: GameAction[] = [];
+
+  // Home token placement — first action on first OR turn (free in 1830)
+  if (!done.has("token") && company.tokens.length === 0) {
+    const companyDef = def.companies.find((c) => c.id === companyId);
+    if (companyDef && companyDef.coordinates.length >= 2) {
+      const q = companyDef.coordinates[0]!;
+      const r = companyDef.coordinates[1]!;
+      moves.push({ type: "place_token", companyId, coord: { q, r }, cityIndex: companyDef.city ?? 0 });
+    }
+  }
 
   // Tile laying (up to 8 positions, 1 tile each)
   if (!done.has("tile")) {

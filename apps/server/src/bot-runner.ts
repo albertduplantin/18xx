@@ -63,7 +63,7 @@ function describeAction(
       return `${who}: passe enchère`;
 
     case "place_token":
-      return `${who}: token ${action.companyId} → (${action.coord.q},${action.coord.r})`;
+      return `${who}: token ${action.companyId} → (${action.coord.q},${action.coord.r}) [slot ${action.cityIndex}]`;
 
     default:
       return `${who}: ${(action as { type: string }).type}`;
