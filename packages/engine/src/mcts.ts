@@ -480,6 +480,7 @@ export function mctsGetAction(
   def: GameDef,
   botPlayerId: string,
   iterations: number = DEFAULT_ITERS,
+  maxMs: number = 800,
 ): GameAction | null {
   if (state.status !== "active") return null;
   if (state.currentPlayerId !== botPlayerId) return null;
@@ -491,7 +492,9 @@ export function mctsGetAction(
     return applyAction(state, def, only).ok ? only : null;
   }
 
+  const deadline = Date.now() + maxMs;
   for (let i = 0; i < iterations; i++) {
+    if (i % 20 === 0 && Date.now() > deadline) break;
     let node = select(root);
     if (node.untried.length > 0 && node.state.status === "active") node = expand(node, def);
     const scores = rollout(node.state, def);

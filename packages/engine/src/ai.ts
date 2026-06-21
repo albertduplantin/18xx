@@ -52,8 +52,8 @@ export function getAIAction(
     return null;
   }
 
-  // balanced: full MCTS
-  const mcts = mctsGetAction(state, def, botPlayerId, iterations);
+  // balanced: full MCTS capped at 800ms so it never blocks the server event loop
+  const mcts = mctsGetAction(state, def, botPlayerId, iterations, 800);
   if (mcts) return mcts;
 
   // Heuristic fallback if MCTS returns null
