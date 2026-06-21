@@ -27,6 +27,7 @@ export type GameRecord = {
   // set when phase = "active"
   state?: GameState;
   botIds?: readonly string[];
+  botDecisions?: readonly string[];
 };
 
 const DATA_DIR  = process.env["DATA_DIR"] ?? resolve(process.cwd(), "data");

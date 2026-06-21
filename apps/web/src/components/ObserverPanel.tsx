@@ -1,6 +1,7 @@
 import React from "react";
 import type { GameState, GameDef, AuctionContext, StockContext, OperatingContext } from "@18xx/shared";
 import { priceAt } from "@18xx/engine";
+import { useGameStore } from "../store/game-store.js";
 
 type Props = {
   state: GameState;
@@ -43,7 +44,8 @@ function currentActionDesc(state: GameState, def: GameDef): string {
 }
 
 export function ObserverPanel({ state, def }: Props) {
-  const recentLog = [...state.log].slice(-10).reverse();
+  const botDecisions = useGameStore((s) => s.botDecisions);
+  const recentLog = [...state.log].slice(-8).reverse();
 
   const LOG_COLOR: Record<string, string> = {
     action: "#d0d0d0",
@@ -64,17 +66,45 @@ export function ObserverPanel({ state, def }: Props) {
         </div>
       </div>
 
-      {/* Recent log */}
+      {/* Bot decisions log */}
+      {botDecisions.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10, color: "#7040c0", fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>
+            DÉCISIONS DES BOTS (dernières {Math.min(botDecisions.length, 30)})
+          </div>
+          <div style={{ background: "#0a0a18", border: "1px solid #2a1a40", borderRadius: 6, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
+            {[...botDecisions].reverse().slice(0, 30).map((entry, i) => {
+              const isRouteIssue = entry.includes("aucune route");
+              const isPass = entry.includes("passe");
+              const isFallback = entry.includes("[fallback]");
+              const color = isFallback ? "#c04040" : isRouteIssue ? "#e07030" : isPass ? "#555" : "#a0c0a0";
+              return (
+                <div key={i} style={{
+                  fontSize: 10, fontFamily: "monospace", lineHeight: 1.5,
+                  color, opacity: 1 - i * 0.025,
+                  borderBottom: i === 0 ? "1px solid #2a1a40" : "none",
+                  paddingBottom: i === 0 ? 4 : 0,
+                  fontWeight: i === 0 ? 700 : 400,
+                }}>
+                  {entry}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Game engine log */}
       <div>
         <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>
-          DERNIÈRES ACTIONS
+          LOG DU JEU
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {recentLog.map((entry, i) => (
             <div key={i} style={{
               fontSize: 11, fontFamily: "monospace", lineHeight: 1.4,
               color: i === 0 ? (LOG_COLOR[entry.type] ?? "#aaa") : "#555",
-              opacity: 1 - i * 0.07,
+              opacity: 1 - i * 0.09,
             }}>
               {entry.message}
             </div>

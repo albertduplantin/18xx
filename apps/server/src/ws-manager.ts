@@ -23,10 +23,14 @@ export const wsManager = {
     });
   },
 
-  broadcast(gameId: string, state: GameState): void {
+  broadcast(gameId: string, state: GameState, botDecisions?: readonly string[]): void {
     const room = rooms.get(gameId);
     if (!room) return;
-    const payload = JSON.stringify({ type: "state_update", state });
+    const payload = JSON.stringify({
+      type: "state_update",
+      state,
+      ...(botDecisions ? { botDecisions: botDecisions.slice(-30) } : {}),
+    });
     room.forEach(({ socket }) => {
       if (socket.readyState === 1) socket.send(payload);
     });

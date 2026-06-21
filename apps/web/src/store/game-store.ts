@@ -30,6 +30,7 @@ type GameStore = {
   isObserver: boolean;
   ws: WebSocket | null;
   error: string | null;
+  botDecisions: readonly string[];
 
   setLobby(gameId: string, lobby: LobbyInfo, playerId: string): void;
   setGame(gameId: string, state: GameState, def: GameDef, playerId: string, isObserver?: boolean): void;
@@ -49,6 +50,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isObserver: false,
   ws: null,
   error: null,
+  botDecisions: [],
 
   setLobby(gameId, lobby, playerId) {
     set({ gameId, lobby, playerId, phase: "lobby", state: null, error: null });
@@ -67,7 +69,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data as string) as
-        | { type: "state_update"; state: GameState }
+        | { type: "state_update"; state: GameState; botDecisions?: readonly string[] }
         | { type: "lobby_update"; lobby: LobbyInfo }
         | { type: "error"; error: string };
 
@@ -75,7 +77,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const { def, playerId: pid } = get();
         const playerIds = msg.state.players.map((p) => p.id);
         const isObs = !playerIds.includes(pid ?? "");
-        set({ state: msg.state, phase: "active", lobby: null, isObserver: isObs, def: def ?? undefined as never, error: null });
+        set({
+          state: msg.state,
+          phase: "active",
+          lobby: null,
+          isObserver: isObs,
+          def: def ?? undefined as never,
+          error: null,
+          ...(msg.botDecisions ? { botDecisions: msg.botDecisions } : {}),
+        });
       } else if (msg.type === "lobby_update") {
         set({ lobby: msg.lobby, phase: "lobby", state: null, error: null });
       } else {
