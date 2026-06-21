@@ -12,6 +12,7 @@ import { StockPanel } from "../components/actions/StockPanel.js";
 import { OperatingPanel } from "../components/actions/OperatingPanel.js";
 import { TilePicker } from "../components/actions/TilePicker.js";
 import { useGameStore } from "../store/game-store.js";
+import { RulesButton } from "../components/RulesModal.js";
 
 type Tab = "map" | "market" | "log";
 
@@ -122,6 +123,7 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
         <span style={{ color: "#aaa" }}>Phase {state.phaseId}</span>
         <span style={{ color: "#555" }}>·</span>
         <span>Bank: <strong style={{ color: "#ffd700" }}>${state.bank.toLocaleString()}</strong></span>
+        <RulesButton />
 
         {isMyTurn && state.round !== "operating" && (
           <span style={{ marginLeft: "auto", background: "#2a5020", color: "#80e060", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: "bold" }}>
