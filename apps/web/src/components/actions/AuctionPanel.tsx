@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import type { GameState, GameDef, AuctionContext } from "@18xx/shared";
+import { TurnGuide } from "../TurnGuide.js";
 
 type Props = {
   state: GameState;
@@ -20,6 +21,8 @@ export function AuctionPanel({ state, def, myPlayerId, onAction }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <TurnGuide state={state} def={def} myPlayerId={myPlayerId} />
+
       <div style={{ background: "#12122a", border: "1px solid #555", borderRadius: 8, padding: 12 }}>
         <div style={{ fontSize: 11, color: "#aaa", marginBottom: 6, fontWeight: 600, letterSpacing: 1 }}>
           PRIVATE COMPANY AUCTION

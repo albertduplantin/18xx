@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import type { GameState, GameDef, StockContext } from "@18xx/shared";
 import { priceAt } from "@18xx/engine";
+import { TurnGuide } from "../TurnGuide.js";
 
 type Props = {
   state: GameState;
@@ -27,6 +28,7 @@ export function StockPanel({ state, def, myPlayerId, onAction }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <TurnGuide state={state} def={def} myPlayerId={myPlayerId} />
       <div style={{ fontSize: 11, color: "#aaa", fontWeight: 600, letterSpacing: 1 }}>STOCK ROUND</div>
 
       {/* SELL section */}
