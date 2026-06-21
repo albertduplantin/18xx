@@ -52,7 +52,29 @@ export function getAIAction(
     return null;
   }
 
-  // balanced: full MCTS capped at 800ms so it never blocks the server event loop
+  // balanced: use heuristics for OR tile/token (MCTS only sees 1 tile at rot.0 due to branching cap)
+  // MCTS handles auction, stock, train purchase, and route decisions.
+  {
+    const ctx = state.turnContext;
+    if (ctx.type === "operating") {
+      const opCtx = ctx as OperatingContext;
+      const done = new Set(opCtx.companyActions);
+      const companyId = opCtx.companyOrder[opCtx.companyIdx] ?? "";
+      const company = state.companies[companyId];
+      if (company) {
+        if (!done.has("token") && company.tokens.length === 0) {
+          const tok = placeHomeToken(state, def, companyId);
+          if (tok) return tok;
+        }
+        if (!done.has("tile")) {
+          const tile = findTileLay(state, def, companyId);
+          if (tile) return tile;
+        }
+      }
+    }
+  }
+
+  // Full MCTS capped at 800ms so it never blocks the server event loop
   const mcts = mctsGetAction(state, def, botPlayerId, iterations, 800);
   if (mcts) return mcts;
 
@@ -102,11 +124,12 @@ function aggStock(state: GameState, def: GameDef, botId: string, ctx: StockConte
   return { type: "pass_stock", playerId: botId };
 }
 
-function placeHomeToken(def: GameDef, companyId: string): GameAction | null {
+function placeHomeToken(state: GameState, def: GameDef, companyId: string): GameAction | null {
   const companyDef = def.companies.find((c) => c.id === companyId);
   if (!companyDef || companyDef.coordinates.length < 2) return null;
   const q = companyDef.coordinates[0]!;
   const r = companyDef.coordinates[1]!;
+  if (!state.map[`${q},${r}`]) return null; // home hex has no tile yet — can't place
   return { type: "place_token", companyId, coord: { q, r }, cityIndex: companyDef.city ?? 0 };
 }
 
@@ -119,7 +142,7 @@ function aggOperate(state: GameState, def: GameDef, ctx: OperatingContext): Game
 
   // Place home token if not yet placed (free on first OR turn)
   if (!done.has("token") && company.tokens.length === 0) {
-    const tok = placeHomeToken(def, companyId);
+    const tok = placeHomeToken(state, def, companyId);
     if (tok) return tok;
   }
 
@@ -213,7 +236,7 @@ function conOperate(state: GameState, def: GameDef, ctx: OperatingContext): Game
 
   // Place home token if not yet placed (free on first OR turn)
   if (!done.has("token") && company.tokens.length === 0) {
-    const tok = placeHomeToken(def, companyId);
+    const tok = placeHomeToken(state, def, companyId);
     if (tok) return tok;
   }
 

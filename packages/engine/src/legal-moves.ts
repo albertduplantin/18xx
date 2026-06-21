@@ -104,7 +104,9 @@ function operatingMoves(state: GameState, def: GameDef, ctx: OperatingContext): 
     if (companyDef && companyDef.coordinates.length >= 2) {
       const q = companyDef.coordinates[0]!;
       const r = companyDef.coordinates[1]!;
-      moves.push({ type: "place_token", companyId, coord: { q, r }, cityIndex: companyDef.city ?? 0 });
+      if (state.map[`${q},${r}`]) { // only offer if a tile actually exists at home hex
+        moves.push({ type: "place_token", companyId, coord: { q, r }, cityIndex: companyDef.city ?? 0 });
+      }
     }
   }
 
