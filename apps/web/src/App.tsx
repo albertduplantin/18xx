@@ -62,11 +62,10 @@ export function App() {
         connectWs(gameId, playerId);
         setView({ page: "waiting", gameId, playerId });
       } else {
-        // Active game
+        // Active game — let GamePage.useEffect call connectWs (avoids double connection)
         const playerIds = data.state.players.map((p: { id: string }) => p.id);
         const isObs = asObserver || !playerIds.includes(playerId);
         setGame(gameId, data.state, GAME_1830, playerId, isObs);
-        connectWs(gameId, playerId);
         setView({ page: "game", gameId, playerId });
       }
 

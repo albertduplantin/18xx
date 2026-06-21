@@ -24,7 +24,11 @@ export function GamePage({ gameId, playerId, onLeave }: { gameId: string; player
   const [tilePickerPos, setTilePickerPos] = useState<{ x: number; y: number } | undefined>();
 
   useEffect(() => {
-    connectWs(gameId, playerId);
+    // Only (re)connect if there's no open WS for this exact game already.
+    // Avoids double-connection when transitioning from WaitingRoom → Game.
+    const store = useGameStore.getState();
+    const alreadyOpen = store.ws?.readyState === WebSocket.OPEN && store.gameId === gameId;
+    if (!alreadyOpen) connectWs(gameId, playerId);
   }, [gameId, playerId, connectWs]);
 
   const onAction = useCallback((action: object) => {
