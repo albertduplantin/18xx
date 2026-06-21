@@ -56,4 +56,5 @@ export type HexDef = {
   readonly label?: string;
   readonly border?: boolean;
   readonly offboard?: { readonly revenue: RevenueValue | PhaseRevenue };
+  readonly terrain?: { readonly type: "mountain" | "water"; readonly cost: number };
 };

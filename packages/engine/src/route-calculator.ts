@@ -1,4 +1,4 @@
-import type { HexCoord, GameState, GameDef, PlacedTile, TileDef, Route } from "@18xx/shared";
+import type { HexCoord, GameState, GameDef, TileDef, Route, Direction } from "@18xx/shared";
 import { hexKey, hexNeighbor, oppositeDirection, rotatePaths } from "./hex-grid.js";
 
 /**
@@ -17,10 +17,9 @@ type Node = {
   revenue: number;
   isCity: boolean;
   isTown: boolean;
+  isOffboard: boolean;
   tokens: readonly (string | null)[];
 };
-
-type Edge = { fromNode: string; toNode: string };
 
 type NetworkGraph = {
   nodes: Map<string, Node>;
@@ -32,24 +31,72 @@ function getPhaseRevenue(revenue: number | Record<string, number>, phaseId: stri
   return revenue[phaseId] ?? 0;
 }
 
+/**
+ * Follow track from a hex's exit direction through blank track tiles until
+ * reaching a city, town, or offboard hex. Returns the destination node key,
+ * or null if the track dead-ends or exits the map.
+ */
+function traceTrack(
+  state: GameState,
+  def: GameDef,
+  startCoord: HexCoord,
+  exitDir: number,
+): string | null {
+  let coord = hexNeighbor(startCoord, exitDir as Direction);
+  let entryDir = oppositeDirection(exitDir as Direction);
+  const visited = new Set<string>();
+
+  while (true) {
+    const key = hexKey(coord);
+    if (visited.has(key)) return null;
+    visited.add(key);
+
+    // Check for offboard hex — it's a revenue terminus
+    const hexDef = def.map.find((h) => h.coord.q === coord.q && h.coord.r === coord.r);
+    if (hexDef?.offboard) return `${key}:offboard`;
+
+    const placed = state.map[key];
+    if (!placed) return null;
+
+    const tileDef = findTileDef(def, placed.tileId);
+    if (!tileDef) return null;
+
+    const rotatedPaths = rotatePaths(tileDef.paths, placed.rotation);
+
+    // Find a path that enters from entryDir
+    const matchingPath = rotatedPaths.find((p) => p.from === entryDir || p.to === entryDir);
+    if (!matchingPath) return null;
+
+    // Revenue stop found — return its node key
+    if (tileDef.cities.length > 0) return `${key}:c0`;
+    if (tileDef.towns.length > 0) return `${key}:t0`;
+
+    // Blank track: continue in the other direction
+    const nextExitDir = matchingPath.from === entryDir ? matchingPath.to : matchingPath.from;
+    coord = hexNeighbor(coord, nextExitDir as Direction);
+    entryDir = oppositeDirection(nextExitDir as Direction);
+  }
+}
+
 function buildGraph(state: GameState, def: GameDef, phaseId: string): NetworkGraph {
   const nodes = new Map<string, Node>();
   const edges = new Map<string, Set<string>>();
 
   function addEdge(a: string, b: string) {
+    if (a === b) return;
     if (!edges.has(a)) edges.set(a, new Set());
     if (!edges.has(b)) edges.set(b, new Set());
     edges.get(a)!.add(b);
     edges.get(b)!.add(a);
   }
 
+  // Pass 1: create nodes for all placed city/town hexes
   for (const [key, placed] of Object.entries(state.map)) {
     const tileDef = findTileDef(def, placed.tileId);
     if (!tileDef) continue;
 
     const coordParts = key.split(",");
     const coord: HexCoord = { q: Number(coordParts[0]), r: Number(coordParts[1]) };
-    const rotatedPaths = rotatePaths(tileDef.paths, placed.rotation);
 
     for (let ci = 0; ci < tileDef.cities.length; ci++) {
       const city = tileDef.cities[ci]!;
@@ -60,6 +107,7 @@ function buildGraph(state: GameState, def: GameDef, phaseId: string): NetworkGra
         revenue: getPhaseRevenue(city.revenue, phaseId),
         isCity: true,
         isTown: false,
+        isOffboard: false,
         tokens: placed.tokenSlots,
       });
       if (!edges.has(nodeKey)) edges.set(nodeKey, new Set());
@@ -74,31 +122,50 @@ function buildGraph(state: GameState, def: GameDef, phaseId: string): NetworkGra
         revenue: getPhaseRevenue(town.revenue, phaseId),
         isCity: false,
         isTown: true,
+        isOffboard: false,
         tokens: [],
       });
       if (!edges.has(nodeKey)) edges.set(nodeKey, new Set());
     }
+  }
 
+  // Add offboard hexes as revenue termini
+  for (const hexDef of def.map) {
+    if (!hexDef.offboard) continue;
+    const key = hexKey(hexDef.coord);
+    const nodeKey = `${key}:offboard`;
+    nodes.set(nodeKey, {
+      key: nodeKey,
+      coord: hexDef.coord,
+      revenue: getPhaseRevenue(hexDef.offboard.revenue, phaseId),
+      isCity: true,
+      isTown: false,
+      isOffboard: true,
+      tokens: [],
+    });
+    if (!edges.has(nodeKey)) edges.set(nodeKey, new Set());
+  }
+
+  // Pass 2: trace tracks from city/town nodes to find connections through blank tiles
+  for (const [key, placed] of Object.entries(state.map)) {
+    const tileDef = findTileDef(def, placed.tileId);
+    if (!tileDef) continue;
+    if (tileDef.cities.length === 0 && tileDef.towns.length === 0) continue;
+
+    const coordParts = key.split(",");
+    const coord: HexCoord = { q: Number(coordParts[0]), r: Number(coordParts[1]) };
+    const rotatedPaths = rotatePaths(tileDef.paths, placed.rotation);
+
+    const fromNodeKey = tileDef.cities.length > 0 ? `${key}:c0` : `${key}:t0`;
+
+    const tracedExits = new Set<number>();
     for (const path of rotatedPaths) {
-      const neighborCoord = hexNeighbor(coord, path.to);
-      const neighborKey = hexKey(neighborCoord);
-      const neighborPlaced = state.map[neighborKey];
-      if (!neighborPlaced) continue;
-
-      const neighborDef = findTileDef(def, neighborPlaced.tileId);
-      if (!neighborDef) continue;
-
-      const neighborPaths = rotatePaths(neighborDef.paths, neighborPlaced.rotation);
-      const entryDir = oppositeDirection(path.to);
-
-      for (const np of neighborPaths) {
-        if (np.from === entryDir || np.to === entryDir) {
-          const fromNode = tileDef.cities.length > 0 ? `${key}:c0` : tileDef.towns.length > 0 ? `${key}:t0` : null;
-          const toNode = neighborDef.cities.length > 0 ? `${neighborKey}:c0` : neighborDef.towns.length > 0 ? `${neighborKey}:t0` : null;
-          if (fromNode && toNode) {
-            addEdge(fromNode, toNode);
-          }
-          break;
+      for (const dir of [path.from, path.to]) {
+        if (tracedExits.has(dir)) continue;
+        tracedExits.add(dir);
+        const toNodeKey = traceTrack(state, def, coord, dir);
+        if (toNodeKey && nodes.has(toNodeKey)) {
+          addEdge(fromNodeKey, toNodeKey);
         }
       }
     }
@@ -118,7 +185,6 @@ export function calculateOptimalRoutes(
 
   const phaseId = state.phaseId;
   const graph = buildGraph(state, def, phaseId);
-  const phase = def.phases.find((p) => p.id === phaseId);
 
   const results: Route[] = [];
 
@@ -129,9 +195,11 @@ export function calculateOptimalRoutes(
 
     const companyTokenNodes = new Set(
       [...graph.nodes.entries()]
-        .filter(([, n]) => n.isCity && n.tokens.some((t) => t === companyId))
-        .map(([k]) => k)
+        .filter(([, n]) => n.isCity && !n.isOffboard && n.tokens.some((t) => t === companyId))
+        .map(([k]) => k),
     );
+
+    if (companyTokenNodes.size === 0) continue;
 
     let bestRoute: Route | null = null;
     let bestRevenue = 0;
@@ -142,10 +210,10 @@ export function calculateOptimalRoutes(
       const node = graph.nodes.get(currentNode)!;
       revenue += node.revenue;
 
+      // Route is valid if it has ≥2 stops AND passes through at least one company token
       const hasToken = companyTokenNodes.has(currentNode);
-      const pathIsValid = visited.length >= 2 && (hasToken || visited.some((n) => companyTokenNodes.has(n)));
-
-      if (pathIsValid && revenue > bestRevenue) {
+      const routeHasToken = hasToken || visited.some((n) => companyTokenNodes.has(n));
+      if (visited.length >= 2 && routeHasToken && revenue > bestRevenue) {
         bestRevenue = revenue;
         bestRoute = {
           trainTypeId,
@@ -157,6 +225,9 @@ export function calculateOptimalRoutes(
           revenue,
         };
       }
+
+      // Don't extend from offboard termini
+      if (node.isOffboard) return;
 
       const neighbors = graph.edges.get(currentNode) ?? new Set();
       for (const neighbor of neighbors) {

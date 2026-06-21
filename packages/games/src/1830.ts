@@ -25,11 +25,14 @@ export const GAME_1830: GameDef = {
   // 1830 uses a 4-row × 12-col grid. Par values are in row 0 (cols 5-11).
   // NOTE: Verify exact prices and cell types.
   stockMarket: {
+    // Par values verified against 18xx.games source: $67, $71, $76, $82, $90, $100
     market: [
       [
-        { price: 60 }, { price: 67 }, { price: 71 }, { price: 76 }, { price: 82 },
-        { price: 90, type: "par" }, { price: 100, type: "par" }, { price: 112, type: "par" },
-        { price: 124 }, { price: 137 }, { price: 151 }, { price: 167 },
+        { price: 60 },
+        { price: 67, type: "par" }, { price: 71, type: "par" },
+        { price: 76, type: "par" }, { price: 82, type: "par" },
+        { price: 90, type: "par" }, { price: 100, type: "par" },
+        { price: 112 }, { price: 124 }, { price: 137 }, { price: 151 }, { price: 167 },
         { price: 185 }, { price: 200 }, { price: 220 }, { price: 245 },
         { price: 270 }, { price: 300 },
       ],
@@ -288,9 +291,11 @@ export const GAME_1830: GameDef = {
     { coord: { q: -8, r: 0  }, label: "Detroit",   offboard: { revenue: { "2": 30, "3": 40, "4": 40, "5": 50, "6": 50, D: 50 } } },
 
     // Major cities (pre-printed tiles — yellow from start)
+    // Water terrain ($80 surcharge) on New York — verified from 18xx.games map.rb
     {
       coord: { q: 5,  r: 1 },
       label: "New York",
+      terrain: { type: "water", cost: 80 },
       tile: { id: "NYC_MAP", color: "yellow", paths: [{ from: 0, to: 3 }, { from: 1, to: 4 }], cities: [{ slots: 2, revenue: 40 }], towns: [] },
     },
     {
@@ -303,9 +308,11 @@ export const GAME_1830: GameDef = {
       label: "Baltimore",
       tile: { id: "BALT_MAP", color: "yellow", paths: [{ from: 0, to: 3 }], cities: [{ slots: 1, revenue: 30 }], towns: [] },
     },
+    // Water terrain on Pittsburgh — verified from 18xx.games map.rb
     {
       coord: { q: 0,  r: 2 },
       label: "Pittsburgh",
+      terrain: { type: "water", cost: 80 },
       tile: { id: "PITT_MAP", color: "yellow", paths: [{ from: 0, to: 3 }], cities: [{ slots: 1, revenue: 30 }], towns: [] },
     },
     {
@@ -319,7 +326,7 @@ export const GAME_1830: GameDef = {
       tile: { id: "ALB_MAP", color: "yellow", paths: [{ from: 0, to: 3 }], cities: [{ slots: 1, revenue: 20 }], towns: [] },
     },
 
-    // Blank playable hexes (a full map needs ~120 more entries)
+    // Blank playable hexes — mountain terrain ($120) where identifiable from 18xx.games map
     { coord: { q: 0,  r: -1 } },
     { coord: { q: 1,  r: 0  } },
     { coord: { q: 2,  r: 0  } },
@@ -329,17 +336,17 @@ export const GAME_1830: GameDef = {
     { coord: { q: 3,  r: 1  } },
     { coord: { q: 4,  r: 1  } },
     { coord: { q: 1,  r: 1  } },
-    { coord: { q: -1, r: 1  } },
+    { coord: { q: -1, r: 1  }, terrain: { type: "mountain", cost: 120 } },
     { coord: { q: -1, r: 2  } },
-    { coord: { q: -2, r: 2  } },
-    { coord: { q: -3, r: 2  } },
-    { coord: { q: -2, r: 1  } },
+    { coord: { q: -2, r: 2  }, terrain: { type: "mountain", cost: 120 } },
+    { coord: { q: -3, r: 2  }, terrain: { type: "mountain", cost: 120 } },
+    { coord: { q: -2, r: 1  }, terrain: { type: "mountain", cost: 120 } },
     { coord: { q: -1, r: 0  } },
     { coord: { q: -2, r: 0  } },
     { coord: { q: -3, r: 0  } },
     { coord: { q: -3, r: -1 } },
     { coord: { q: -2, r: -1 } },
-    { coord: { q: -1, r: -1 } },
+    { coord: { q: -1, r: -1 }, terrain: { type: "mountain", cost: 120 } },
     { coord: { q: 0,  r: -2 } },
     { coord: { q: 1,  r: -2 } },
     { coord: { q: 2,  r: -2 } },
@@ -347,7 +354,7 @@ export const GAME_1830: GameDef = {
     { coord: { q: 4,  r: -2 } },
     { coord: { q: 5,  r: -2 } },
     { coord: { q: 5,  r: 0  } },
-    { coord: { q: 5,  r: 2  } },
+    { coord: { q: 5,  r: 2  }, terrain: { type: "water", cost: 80 } },
     { coord: { q: 5,  r: 3  } },
     { coord: { q: 4,  r: 2  } },
     { coord: { q: 4,  r: 3  } },

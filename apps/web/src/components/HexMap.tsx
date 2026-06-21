@@ -205,6 +205,19 @@ function HexCell({
         </text>
       )}
 
+      {/* Terrain surcharge badge (mountain / water) */}
+      {hexDef.terrain && !isOffboard && (
+        <g transform={`translate(${size * 0.52}, ${-size * 0.52})`} style={{ pointerEvents: "none" }}>
+          <circle r={size * 0.18}
+            fill={hexDef.terrain.type === "mountain" ? "#6b5a3a" : "#2060a0"}
+            stroke="#fff" strokeWidth={1} />
+          <text textAnchor="middle" dominantBaseline="middle" fontSize={size * 0.14}
+            fill="#fff" fontWeight="bold" fontFamily="monospace">
+            {hexDef.terrain.type === "mountain" ? "⛰" : "~"}
+          </text>
+        </g>
+      )}
+
       {/* Off-board revenue badge */}
       {isOffboard && hexDef.offboard && (
         <g transform={`translate(0, ${-size * 0.25})`} style={{ pointerEvents: "none" }}>

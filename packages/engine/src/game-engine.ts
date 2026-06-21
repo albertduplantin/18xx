@@ -515,6 +515,17 @@ function applyLayTile(
     return { ok: false, error: "Tile must be adjacent to existing track or a city" };
   }
 
+  // Terrain surcharge: deducted from company treasury (mountain $120, water $80)
+  const terrainCost = hexDef.terrain?.cost ?? 0;
+  const company = state.companies[compId];
+  if (!company) return { ok: false, error: "Company not found" };
+  if (terrainCost > 0 && company.cash < terrainCost) {
+    return {
+      ok: false,
+      error: `Need $${terrainCost} for ${hexDef.terrain!.type} terrain surcharge (company has $${company.cash})`,
+    };
+  }
+
   const newMap = {
     ...state.map,
     [key]: {
@@ -526,7 +537,14 @@ function applyLayTile(
 
   const updatedCtx: OperatingContext = { ...ctx, companyActions: [...ctx.companyActions, "tile"] };
   let newState: GameState = { ...state, map: newMap, turnContext: updatedCtx };
-  newState = log(newState, `${compId} lays tile #${action.tileId} at (${action.coord.q},${action.coord.r}) rot.${action.rotation}`, state.currentPlayerId);
+  if (terrainCost > 0) {
+    newState = updateCompany(newState, { ...company, cash: company.cash - terrainCost });
+  }
+  newState = log(
+    newState,
+    `${compId} lays tile #${action.tileId} at (${action.coord.q},${action.coord.r}) rot.${action.rotation}${terrainCost > 0 ? ` ($${terrainCost} terrain)` : ""}`,
+    state.currentPlayerId,
+  );
   return { ok: true, state: newState };
 }
 
