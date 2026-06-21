@@ -2,6 +2,7 @@ import React from "react";
 import type { GameState, GameDef, OperatingContext, HexCoord, Route } from "@18xx/shared";
 import { priceAt } from "@18xx/engine";
 import { TurnGuide } from "../TurnGuide.js";
+import { Advisor } from "../Advisor.js";
 
 type Props = {
   state: GameState;
@@ -36,6 +37,7 @@ export function OperatingPanel({ state, def, myPlayerId, selectedHex, calculated
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <Advisor state={state} def={def} myPlayerId={myPlayerId} />
       <TurnGuide state={state} def={def} myPlayerId={myPlayerId} />
       {/* Company header */}
       <div style={{ background: companyDef.color, borderRadius: 6, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10 }}>
