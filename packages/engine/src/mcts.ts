@@ -122,7 +122,36 @@ function stockPolicy(state: GameState, def: GameDef, ctx: StockContext, playerId
   const alreadyBought = ctx.boughtThisTurn.includes(playerId);
 
   if (!alreadyBought) {
-    // Start a company at the lowest affordable par value
+    // Count companies the bot has already started (holds president cert)
+    const botPresidentCerts = player.shares.filter((s) => s.president).length;
+
+    // Priority 1: buy into an in_progress company to help it reach 60% float.
+    // Only skip this when the bot has < 2 companies started (start first).
+    if (botPresidentCerts >= 2) {
+      let bestId = "";
+      let bestScore = -Infinity;
+      for (const company of def.companies) {
+        const cs = state.companies[company.id];
+        if (!cs || cs.status !== "in_progress") continue;
+        const pos = state.stockMarket[company.id];
+        if (!pos) continue;
+        const price = priceAt(def, pos);
+        if (price <= 0 || price > player.cash) continue;
+        // Prefer companies where the bot is president (its own) and close to floating
+        const soldPercent = state.players
+          .flatMap((p) => p.shares)
+          .filter((s) => s.companyId === company.id)
+          .reduce((s, sh) => s + sh.percent, 0);
+        const remainingToFloat = Math.max(0, 60 - soldPercent);
+        const score = (player.shares.some((s) => s.companyId === company.id && s.president) ? 100 : 0)
+          - remainingToFloat
+          - price / 100;
+        if (score > bestScore) { bestScore = score; bestId = company.id; }
+      }
+      if (bestId) return { type: "buy_share", playerId, companyId: bestId, from: "ipo" };
+    }
+
+    // Priority 2: start a new company (only if fewer than 2 bot president certs)
     for (const company of def.companies) {
       const cs = state.companies[company.id];
       if (cs?.status !== "unstarted") continue;
@@ -132,7 +161,8 @@ function stockPolicy(state: GameState, def: GameDef, ctx: StockContext, playerId
         }
       }
     }
-    // Buy into the cheapest floated/started company
+
+    // Priority 3: buy into any affordable floated/in_progress company
     let cheapestPrice = Infinity;
     let cheapestId = "";
     for (const company of def.companies) {

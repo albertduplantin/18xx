@@ -100,10 +100,18 @@ export function StockPanel({ state, def, myPlayerId, onAction }: Props) {
                 </span>
                 {ipoAvailable > 0 && (
                   <button
-                    onClick={() => setSelectedCompany(selectedCompany === c.id ? null : c.id)}
+                    onClick={() => {
+                      if (isUnstarted) {
+                        // Show par picker to start a new company
+                        setSelectedCompany(selectedCompany === c.id ? null : c.id);
+                      } else {
+                        // Company already started — buy a 10% share directly at current price
+                        onAction({ type: "buy_share", playerId: myPlayerId, companyId: c.id, from: "ipo" });
+                      }
+                    }}
                     disabled={!canBuy}
                     style={{ padding: "2px 10px", background: selectedCompany === c.id ? "#4040c0" : "#1a2a40", border: "1px solid #4040c0", borderRadius: 3, color: canBuy ? "#78c0f0" : "#555", cursor: canBuy ? "pointer" : "not-allowed", fontSize: 12 }}>
-                    IPO ({ipoAvailable})
+                    {isUnstarted ? `IPO (démarrer)` : `IPO (${ipoAvailable}) $${price}`}
                   </button>
                 )}
                 {poolShares > 0 && (

@@ -431,8 +431,13 @@ function startOperatingRound(state: GameState, def: GameDef, orRound: number): G
     });
 
   if (floated.length === 0) {
-    // No companies to operate — go back to SR
-    return startStockRound({ ...state, roundNumber: state.roundNumber + 1 }, def);
+    // No companies floated yet — skip OR and start next SR (don't increment roundNumber)
+    return log(
+      startStockRound({ ...state }, def),
+      "No floated companies — Operating Round skipped",
+      undefined,
+      "system",
+    );
   }
 
   const ctx: OperatingContext = {
