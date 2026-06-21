@@ -1,5 +1,6 @@
 import type { WebSocket } from "@fastify/websocket";
 import type { GameState } from "@18xx/shared";
+import type { GameRecord } from "./store.js";
 
 type Client = {
   socket: WebSocket;
@@ -31,6 +32,25 @@ export const wsManager = {
     });
   },
 
+  broadcastLobby(record: GameRecord): void {
+    const room = rooms.get(record.id);
+    if (!room) return;
+    const payload = JSON.stringify({
+      type: "lobby_update",
+      lobby: {
+        id: record.id,
+        defId: record.defId,
+        phase: record.phase,
+        creatorId: record.creatorId,
+        slots: record.slots,
+        maxPlayers: record.maxPlayers,
+      },
+    });
+    room.forEach(({ socket }) => {
+      if (socket.readyState === 1) socket.send(payload);
+    });
+  },
+
   broadcastError(gameId: string, playerId: string, error: string): void {
     const room = rooms.get(gameId);
     if (!room) return;
@@ -40,5 +60,9 @@ export const wsManager = {
         c.socket.send(payload);
       }
     });
+  },
+
+  connectedCount(gameId: string): number {
+    return rooms.get(gameId)?.size ?? 0;
   },
 };

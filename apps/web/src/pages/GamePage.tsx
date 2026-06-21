@@ -16,8 +16,8 @@ import { RulesButton } from "../components/RulesModal.js";
 
 type Tab = "map" | "market" | "log";
 
-export function GamePage({ gameId, playerId }: { gameId: string; playerId: string }) {
-  const { state, def, connectWs, sendAction, error, clearError } = useGameStore();
+export function GamePage({ gameId, playerId, onLeave }: { gameId: string; playerId: string; onLeave?: () => void }) {
+  const { state, def, connectWs, sendAction, error, clearError, isObserver } = useGameStore();
   const [selectedHex, setSelectedHex] = useState<HexCoord | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("map");
   const [showTilePicker, setShowTilePicker] = useState(false);
@@ -133,15 +133,26 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
         <span>Bank: <strong style={{ color: "#ffd700" }}>${state.bank.toLocaleString()}</strong></span>
         <RulesButton />
 
-        {isMyTurn && state.round !== "operating" && (
-          <span style={{ marginLeft: "auto", background: "#2a5020", color: "#80e060", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: "bold" }}>
+        {isObserver && (
+          <span style={{ background: "#2a1a40", color: "#a060e0", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: "bold", border: "1px solid #6030a0" }}>
+            👁 OBSERVATEUR
+          </span>
+        )}
+        {isMyTurn && !isObserver && state.round !== "operating" && (
+          <span style={{ background: "#2a5020", color: "#80e060", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: "bold" }}>
             YOUR TURN
           </span>
         )}
         {state.status === "finished" && (
-          <span style={{ marginLeft: "auto", background: "#5a0020", color: "#ff8080", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: "bold" }}>
+          <span style={{ background: "#5a0020", color: "#ff8080", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: "bold" }}>
             GAME OVER
           </span>
+        )}
+        {onLeave && (
+          <button onClick={onLeave}
+            style={{ marginLeft: "auto", background: "transparent", border: "1px solid #2a2a40", borderRadius: 6, color: "#555", fontSize: 12, padding: "3px 10px", cursor: "pointer" }}>
+            ← Lobby
+          </button>
         )}
 
         {error && (
@@ -181,8 +192,7 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
               tiles={def.tiles}
               selectedHex={selectedHex}
               onHexClick={onHexClick}
-              onValidTileClick={onValidTileClick}
-              validTileHexes={validTileHexes}
+              {...(!isObserver ? { onValidTileClick, validTileHexes } : {})}
               activeRoutes={activeRoutes}
             />
           </div>
@@ -203,25 +213,33 @@ export function GamePage({ gameId, playerId }: { gameId: string; playerId: strin
       {/* ── Right sidebar ── */}
       <div style={{ borderLeft: "1px solid #2a2a50", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: 12, borderBottom: "1px solid #2a2a50" }}>
-          {ctx.type === "auction" && (
-            <AuctionPanel state={state} def={def} myPlayerId={playerId} onAction={onAction} />
-          )}
-          {ctx.type === "stock" && (
-            <StockPanel state={state} def={def} myPlayerId={playerId} onAction={onAction} />
-          )}
-          {ctx.type === "operating" && (
-            <OperatingPanel
-              state={state}
-              def={def}
-              myPlayerId={playerId}
-              selectedHex={selectedHex}
-              calculatedRoutes={activeRoutes}
-              onAction={onAction}
-              onRequestTilePicker={() => {
-                if (selectedHex) setShowTilePicker(true);
-                else setActiveTab("map");
-              }}
-            />
+          {isObserver ? (
+            <div style={{ background: "#1a0a2a", border: "1px solid #4a20a0", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#a060e0", textAlign: "center" }}>
+              👁 Mode observateur — la partie se déroule en direct
+            </div>
+          ) : (
+            <>
+              {ctx.type === "auction" && (
+                <AuctionPanel state={state} def={def} myPlayerId={playerId} onAction={onAction} />
+              )}
+              {ctx.type === "stock" && (
+                <StockPanel state={state} def={def} myPlayerId={playerId} onAction={onAction} />
+              )}
+              {ctx.type === "operating" && (
+                <OperatingPanel
+                  state={state}
+                  def={def}
+                  myPlayerId={playerId}
+                  selectedHex={selectedHex}
+                  calculatedRoutes={activeRoutes}
+                  onAction={onAction}
+                  onRequestTilePicker={() => {
+                    if (selectedHex) setShowTilePicker(true);
+                    else setActiveTab("map");
+                  }}
+                />
+              )}
+            </>
           )}
         </div>
 
