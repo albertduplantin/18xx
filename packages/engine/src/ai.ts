@@ -225,21 +225,49 @@ function conOperate(state: GameState, def: GameDef, ctx: OperatingContext): Game
 
 // ─── Shared utility ───────────────────────────────────────────────────────────
 
+type LayTileAction = Extract<GameAction, { type: "lay_tile" }>;
+
 function findTileLay(state: GameState, def: GameDef, companyId: string): GameAction | null {
-  const phase = def.phases.find((p) => p.id === state.phaseId);
-  const colors = phase?.tiles ?? ["yellow"];
-  for (const key of Object.keys(state.map)) {
-    const [qs, rs] = key.split(",");
-    const q = Number(qs), r = Number(rs);
-    for (let dir = 0 as 0; dir < 6; dir++) {
-      const n = hexNeighbor({ q, r }, dir);
-      const nk = hexKey(n);
-      if (state.map[nk]) continue;
-      const hexDef = def.map.find((h) => h.coord.q === n.q && h.coord.r === n.r);
-      if (!hexDef || hexDef.offboard) continue;
-      const tile = def.tiles.find((t) => colors.includes(t.color) && t.paths.length === 1 && t.cities.length === 0 && t.towns.length === 0);
-      if (tile) return { type: "lay_tile", companyId, coord: n, tileId: tile.id, rotation: 0 };
+  // Delegate validity entirely to the engine — it handles terrain, connectivity, tile availability
+  const legal = getLegalMoves(state, def).filter(
+    (m): m is LayTileAction => m.type === "lay_tile"
+  );
+  if (legal.length === 0) return null;
+
+  function scoreLay(move: LayTileAction): number {
+    const tileDef = def.tiles.find((t) => t.id === move.tileId);
+    if (!tileDef) return 0;
+    let s = 0;
+
+    for (const path of tileDef.paths) {
+      for (const endDir of [path.from, path.to]) {
+        const exitDir = (endDir + move.rotation) % 6;
+        const nb = hexNeighbor(move.coord, exitDir as 0);
+        const nbKey = hexKey(nb);
+
+        // Exit connects to an already-placed tile
+        const nbPlaced = state.map[nbKey];
+        if (nbPlaced) {
+          s += 4;
+          // Both sides connect (genuine network link, not dead-end against a tile)
+          const nbTileDef = def.tiles.find((t) => t.id === nbPlaced.tileId);
+          const incomingDir = (exitDir + 3) % 6;
+          if (nbTileDef?.paths.some(
+            (p) => (p.from + nbPlaced.rotation) % 6 === incomingDir || (p.to + nbPlaced.rotation) % 6 === incomingDir
+          )) s += 3;
+        }
+
+        // Exit points toward a city hex (pre-placed cities in the map definition)
+        const nbHexDef = def.map.find((h) => h.coord.q === nb.q && h.coord.r === nb.r);
+        if (nbHexDef && !nbHexDef.offboard && (nbHexDef.tile?.cities.length ?? 0) > 0) s += 2;
+      }
     }
+
+    s += tileDef.paths.length;      // prefer Y-junctions over straight tracks
+    s += tileDef.towns.length * 2;  // towns generate revenue
+    return s;
   }
-  return null;
+
+  // Pick the legal move with the highest network score
+  return legal.reduce<LayTileAction>((best, m) => scoreLay(m) >= scoreLay(best) ? m : best, legal[0]!);
 }
