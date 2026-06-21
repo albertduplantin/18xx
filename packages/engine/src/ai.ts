@@ -286,6 +286,17 @@ function findTileLay(state: GameState, def: GameDef, companyId: string): GameAct
   const tileById = new Map(def.tiles.map((t) => [t.id, t]));
   const companyCash = state.companies[companyId]?.cash ?? 0;
 
+  // Hexes where this company already has tokens — bias tile placement toward them
+  const companyTokenHexes = new Set<string>();
+  for (const [key, tile] of Object.entries(state.map)) {
+    if (tile?.tokenSlots.includes(companyId)) companyTokenHexes.add(key);
+  }
+  // Always include the home city hex so we build outward from it even before token is placed
+  const compDef = def.companies.find((c) => c.id === companyId);
+  if (compDef && compDef.coordinates.length >= 2) {
+    companyTokenHexes.add(`${compDef.coordinates[0]},${compDef.coordinates[1]}`);
+  }
+
   let bestScore = -1;
   let bestCoord = { q: 0, r: 0 };
   let bestTileId = trackTiles[0]!.id;
@@ -307,9 +318,21 @@ function findTileLay(state: GameState, def: GameDef, companyId: string): GameAct
       if ((hexDef.terrain?.cost ?? 0) > companyCash) continue;
       seenCoords.add(nk);
 
+      // Home-city proximity bonus: candidate hex adjacent to a company token/home hex
+      let homeBonus = 0;
+      for (const tokenKey of companyTokenHexes) {
+        const tc = tokenKey.indexOf(",");
+        const tq = Number(tokenKey.slice(0, tc)), tr = Number(tokenKey.slice(tc + 1));
+        for (let d = 0; d < 6; d++) {
+          const nbn = hexNeighbor({ q: tq, r: tr }, d as 0);
+          if (hexKey(nbn) === nk) { homeBonus = 5; break; }
+        }
+        if (homeBonus) break;
+      }
+
       for (const tile of trackTiles) {
         for (let rot = 0; rot < 6; rot++) {
-          let s = 0;
+          let s = homeBonus; // start with home-city bias
 
           for (const path of tile.paths) {
             for (const end of [path.from, path.to] as number[]) {

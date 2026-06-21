@@ -35,8 +35,10 @@ function describeAction(
       const co = state.companies[compId];
       const trains = co?.trains.join(",") || "aucun";
       const suffix = action.dividend === "pay" ? "dividende" : "retenu";
-      if (rev === 0 && action.routes.length === 0)
-        return `${who}: routes $0 [aucune route trouvée — trains:${trains}] → retenu`;
+      if (rev === 0 && action.routes.length === 0) {
+        const hasToken = Object.values(state.map).some(t => t?.tokenSlots.includes(compId));
+        return `${who}: routes $0 [aucune route — trains:${trains}, token:${hasToken ? "oui" : "NON"}] → retenu`;
+      }
       return `${who}: routes $${rev} (${action.routes.length} route(s), trains:${trains}) → ${suffix}`;
     }
 
