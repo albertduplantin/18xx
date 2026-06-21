@@ -225,49 +225,85 @@ function conOperate(state: GameState, def: GameDef, ctx: OperatingContext): Game
 
 // ─── Shared utility ───────────────────────────────────────────────────────────
 
-type LayTileAction = Extract<GameAction, { type: "lay_tile" }>;
-
+/**
+ * Heuristic tile placement.
+ * getLegalMoves() deliberately caps options (1 tile, rotation 0) for MCTS tractability.
+ * Here we enumerate all (empty hex, tile, rotation) combos and pick the best by connectivity.
+ */
 function findTileLay(state: GameState, def: GameDef, companyId: string): GameAction | null {
-  // Delegate validity entirely to the engine — it handles terrain, connectivity, tile availability
-  const legal = getLegalMoves(state, def).filter(
-    (m): m is LayTileAction => m.type === "lay_tile"
-  );
-  if (legal.length === 0) return null;
+  const phase = def.phases.find((p) => p.id === state.phaseId);
+  const allowedColors = new Set(phase?.tiles ?? ["yellow"]);
 
-  function scoreLay(move: LayTileAction): number {
-    const tileDef = def.tiles.find((t) => t.id === move.tileId);
-    if (!tileDef) return 0;
-    let s = 0;
+  // Track tiles only (no pre-placed city/offboard tiles)
+  const trackTiles = def.tiles.filter((t) => allowedColors.has(t.color) && t.cities.length === 0);
+  if (trackTiles.length === 0) return null;
 
-    for (const path of tileDef.paths) {
-      for (const endDir of [path.from, path.to]) {
-        const exitDir = (endDir + move.rotation) % 6;
-        const nb = hexNeighbor(move.coord, exitDir as 0);
-        const nbKey = hexKey(nb);
+  // Pre-build lookups for O(1) access
+  const hexDefByKey = new Map(def.map.map((h) => [hexKey(h.coord), h]));
+  const tileById = new Map(def.tiles.map((t) => [t.id, t]));
 
-        // Exit connects to an already-placed tile
-        const nbPlaced = state.map[nbKey];
-        if (nbPlaced) {
-          s += 4;
-          // Both sides connect (genuine network link, not dead-end against a tile)
-          const nbTileDef = def.tiles.find((t) => t.id === nbPlaced.tileId);
-          const incomingDir = (exitDir + 3) % 6;
-          if (nbTileDef?.paths.some(
-            (p) => (p.from + nbPlaced.rotation) % 6 === incomingDir || (p.to + nbPlaced.rotation) % 6 === incomingDir
-          )) s += 3;
+  let bestScore = -1;
+  let bestCoord = { q: 0, r: 0 };
+  let bestTileId = trackTiles[0]!.id;
+  let bestRot = 0;
+
+  const seenCoords = new Set<string>();
+
+  for (const key of Object.keys(state.map)) {
+    const comma = key.indexOf(",");
+    const q = Number(key.slice(0, comma)), r = Number(key.slice(comma + 1));
+
+    for (let dir = 0; dir < 6; dir++) {
+      const nb = hexNeighbor({ q, r }, dir as 0);
+      const nk = hexKey(nb);
+      if (state.map[nk] || seenCoords.has(nk)) continue;
+      const hexDef = hexDefByKey.get(nk);
+      // Skip: off-board, already has a pre-placed tile (city), or outside the map
+      if (!hexDef || hexDef.offboard || hexDef.tile) continue;
+      seenCoords.add(nk);
+
+      for (const tile of trackTiles) {
+        for (let rot = 0; rot < 6; rot++) {
+          let s = 0;
+
+          for (const path of tile.paths) {
+            for (const end of [path.from, path.to] as number[]) {
+              const exitDir = (end + rot) % 6;
+              const exit = hexNeighbor(nb, exitDir as 0);
+              const ek = hexKey(exit);
+
+              // Connects to an existing placed tile
+              const placed = state.map[ek];
+              if (placed) {
+                s += 4;
+                // Bidirectional link — the neighbour also has a path pointing back
+                const placedTile = tileById.get(placed.tileId);
+                const incoming = (exitDir + 3) % 6;
+                if (placedTile?.paths.some(
+                  (p) => (p.from + placed.rotation) % 6 === incoming || (p.to + placed.rotation) % 6 === incoming
+                )) s += 3;
+              }
+
+              // Points toward a city hex on the map
+              const exitHex = hexDefByKey.get(ek);
+              if (exitHex && !exitHex.offboard && (exitHex.tile?.cities.length ?? 0) > 0) s += 2;
+            }
+          }
+
+          s += tile.paths.length;      // Y-junctions > straights
+          s += tile.towns.length * 2;  // towns generate revenue
+
+          if (s > bestScore) {
+            bestScore = s;
+            bestCoord = nb;
+            bestTileId = tile.id;
+            bestRot = rot;
+          }
         }
-
-        // Exit points toward a city hex (pre-placed cities in the map definition)
-        const nbHexDef = def.map.find((h) => h.coord.q === nb.q && h.coord.r === nb.r);
-        if (nbHexDef && !nbHexDef.offboard && (nbHexDef.tile?.cities.length ?? 0) > 0) s += 2;
       }
     }
-
-    s += tileDef.paths.length;      // prefer Y-junctions over straight tracks
-    s += tileDef.towns.length * 2;  // towns generate revenue
-    return s;
   }
 
-  // Pick the legal move with the highest network score
-  return legal.reduce<LayTileAction>((best, m) => scoreLay(m) >= scoreLay(best) ? m : best, legal[0]!);
+  if (bestScore < 0) return null;
+  return { type: "lay_tile", companyId, coord: bestCoord, tileId: bestTileId, rotation: bestRot };
 }
